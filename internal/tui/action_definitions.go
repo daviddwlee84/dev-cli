@@ -131,9 +131,17 @@ func newActionRegistry() []ActionSpec {
 	add(ViewTries, listActionTryRestore, "restore from local archive", "", func(c ActionContext) bool {
 		return c.try.Item.Phase != catalog.PhaseGraduated && c.try.LocationState() == catalog.LocationArchived
 	}, tryApply)
-	add(ViewTries, listActionTryGraduate, "graduate into a project", "", func(c ActionContext) bool {
+	add(ViewTries, listActionTryGraduate, "graduate into a project…", "", func(c ActionContext) bool {
 		return c.try.Item.Phase != catalog.PhaseGraduated && (c.try.LocationState() == catalog.LocationPresent || c.try.LocationState() == catalog.LocationArchived)
-	}, tryApply)
+	}, func(c ActionContext) string {
+		if c.try.Item.Entry == nil || c.try.Item.ID == "" {
+			return "Reload the Try catalog before graduating"
+		}
+		if c.try.Item.Entry.MoveIntent != nil {
+			return "Resolve the pending catalog move first"
+		}
+		return workflow(c)
+	})
 	add(ViewTries, listActionOpen, "open Try", "enter o", func(c ActionContext) bool { return c.try.Present() }, tryApply)
 
 	add(ViewRemote, listActionRemoteContent, "Show snippets", "", nil, nil).Scope = actionView

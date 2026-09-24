@@ -144,7 +144,7 @@ func TestTriesGraduateUsesSharedBehaviorAndLegacyTryGrammar(t *testing.T) {
 	}
 
 	out := h.mustRun("tries", "graduate", "archive", "--category", "Labs")
-	if !strings.Contains(out, "is now a project") || !strings.Contains(out, "dev start archive") {
+	if !strings.Contains(out, "is now a project") || !strings.Contains(out, "dev work start archive") {
 		t.Fatalf("nested graduate output differs from legacy behavior:\n%s", out)
 	}
 	if _, err := os.Stat(filepath.Join(h.scanRoot, "Labs", "archive")); err != nil {

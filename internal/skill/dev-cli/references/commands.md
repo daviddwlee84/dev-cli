@@ -2758,11 +2758,16 @@ dev tries graduate [try] [flags]
 ```
 
 - `-c, --category` — category subdirectory under project_root
-- `--dry-run` — show what would happen without moving anything
-- `--name` — project name (default: the try name without its date prefix)
-- `--private` — create the remote as private
-- `--push` — push after creating the remote
-- `--remote` — create a remote repository with gh or glab
+- `--dry-run` — preview without prompting, applying or probing forge authentication
+- `--forge` — upstream provider: auto, github, gitlab or none; github/gitlab selects creation
+- `--name` — project name (default: remembered name, otherwise the Try name without its date prefix)
+- `--namespace` — GitHub owner/org or GitLab namespace for upstream creation
+- `--private` — create a private upstream (compatibility flag)
+- `--push` — push current branch commits (creation: true; existing URL: false unless explicitly set)
+- `--remote` — create a GitHub or GitLab upstream
+- `--remote-url` — add an existing repository URL as origin without creating a remote repository
+- `--visibility` — upstream visibility: private, public, or internal (GitLab only)
+- `-y, --yes` — use the supplied options without the interactive wizard
 
 ### `dev tries list`
 

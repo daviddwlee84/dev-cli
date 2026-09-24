@@ -102,6 +102,8 @@ func actionGuidance(view View, id listAction) (string, string) {
 			return "Create a Try", "Open the scratch experiment form, including when the list is empty. A Try can be a non-Git directory."
 		case listActionOpen:
 			return "Open the selected Try", "Requires a Try present on this host with no incomplete move. Archived or missing Tries need their own restore or recovery action."
+		case listActionTryGraduate:
+			return "Graduate the selected Try", "Choose the project name and category, keep local or add/create an upstream, then review and confirm the move. Existing remotes and the original Try identity are preserved."
 		case listActionToggleHistory:
 			return "Include or hide Try history", "Toggle deprecated, archived, evicted and graduated entries."
 		case listActionCycleSort:

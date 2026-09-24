@@ -67,6 +67,14 @@ next action，最終建立確認前可選 open（預設）或 stay。Reviewed pl
 Attach、shell-directory handoff 或外部 retirement coordinator 都在 Dashboard
 釋放 terminal 後才執行。一般完成或取消則返回 Dashboard，不會自動啟動 agent。
 
+## 讓 Try 畢業
+
+TRY → Ctrl+O → graduate 開啟與 `dev tries graduate` 相同的 wizard：選擇
+名稱／category，以及本機（預設）、加入 URL 或建立 remote，審閱後確認。
+既有 remotes 保留。取消不套用 graduation 或 publication；遠端失敗時分別
+回報保留的本機成功結果與錯誤，不自動重試或回滾。Flags、預設值與記住的名稱
+見 [Try 畢業](try-graduation.zh-TW.md)。
+
 ## 將已畢業的 repository 退回 Try
 
 在 REPOS → Ctrl+O → demote，可把曾 graduate 的 Try 退回實驗區。

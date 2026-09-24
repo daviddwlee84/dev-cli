@@ -181,7 +181,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.3.0 instead when you need a reproducible install.
+# Pin @v0.3.1 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -225,7 +225,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.3.0
+  version=v0.3.1
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -1332,6 +1332,28 @@ dev tries restore redis
 dev tries graduate redis -c Infra     # promote the Try into a repository
 dev tries demote redis --dry-run      # preview returning a graduated Try
 ```
+
+### Graduate with a project name and publication choice
+
+In a terminal, `dev tries graduate [try]` asks for a project name and optional
+category, offers local (default), an existing remote URL, or a new GitHub/GitLab
+repository, then previews and confirms. TRY → Ctrl+O → graduate uses the same
+wizard. `--yes` or a non-TTY invocation keeps the direct flag-driven path;
+`--dry-run` previews without prompts, authentication probes or mutation.
+
+```bash
+dev tries graduate parser --name parser-core
+dev tries graduate parser --remote-url git@github.com:example/parser-core.git --yes
+dev tries graduate parser --forge github --namespace example --visibility private --yes
+```
+
+Creation defaults to private and push; adding a URL defaults to no push unless
+explicitly selected. All existing remotes are preserved, and any existing remote
+blocks a new add/create request. A local rename does not rename source code or
+remote repositories. After demotion, graduation prefers the last successful
+project name; `--name` overrides it and category is chosen anew. Remote failures
+return nonzero while keeping the completed local project and remote effects,
+without retry or rollback. See the [graduation guide](docs/guides/try-graduation.md).
 
 ### Try lifecycle and demotion
 

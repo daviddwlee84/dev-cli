@@ -576,6 +576,14 @@ browser 也使用此流程。最終 preflight 仍重新檢查；非互動請求�
 狀態回傳原始錯誤。本地 repository 的 `stage` 搭配 `open` 是合法選項；缺少
 installer 時可拒絕或明確略過 optional skill，保留其餘建立設定。
 
+## 讓 Try 畢業
+
+TRY → Ctrl+O → graduate 開啟與 `dev tries graduate` 相同的 wizard：選擇
+名稱／category，以及本機（預設）、加入 URL 或建立 remote，審閱後確認。
+既有 remotes 保留。取消不套用 graduation 或 publication；遠端失敗時分別
+回報保留的本機成功結果與錯誤，不自動重試或回滾。Flags、預設值與記住的名稱
+見 [Try 畢業](try-graduation.zh-TW.md)。
+
 ## 將已畢業的 repository 退回 Try
 
 在 REPOS → Ctrl+O → demote，可把曾 graduate 的 Try 退回實驗區。

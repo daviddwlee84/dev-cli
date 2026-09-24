@@ -7,6 +7,11 @@ verified_on: 2026-09-24
 
 # Sources and freshness
 
+Graduate wizard defaults, publication modes and partial-failure exits come from
+the shared CLI/TUI adapter and its tests. Remembered project-name precedence and
+last-success catalog writes come from the experiment service; read-only legacy
+fallback does not migrate records. See [Try graduation](../guides/try-graduation.md).
+
 Command-family navigation, permanent shortcuts and Try demotion are defined
 by the current Cobra tree, its compatibility tests, the experiment move service
 and REPOS's guarded action adapter. See [the v0.3 migration guide](cli-v0.3.md).

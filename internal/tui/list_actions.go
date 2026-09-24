@@ -568,6 +568,17 @@ func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 			name := map[listAction]string{listActionTryDelete: "delete-try", listActionTryDeletePermanent: "delete-try-permanently", listActionTryRecover: "restore-removed-try"}[action]
 			return m.runWorkflow(WorkflowRequest{Action: name, Try: row})
 		}
+	case listActionTryGraduate:
+		if row, ok := m.currentTry(); ok {
+			if row.Item.Entry != nil {
+				row.Item.Entry = row.Item.Entry.Clone()
+			}
+			if row.Location != nil {
+				location := *row.Location
+				row.Location = &location
+			}
+			return m.runWorkflow(WorkflowRequest{Action: "graduate-try", Try: row})
+		}
 	case listActionOpen:
 		if m.hostFleetEnabled() {
 			if _, ok := m.currentFleet(); ok {
@@ -685,7 +696,7 @@ func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 	case listActionCopyCapabilityRaw:
 		return m.copyCapabilityValue("f")
 	case listActionTryMark, listActionTryDeprecate, listActionTryReactivate,
-		listActionTryArchive, listActionTryRestore, listActionTryGraduate:
+		listActionTryArchive, listActionTryRestore:
 		return m.runTryListAction(action)
 	}
 	return m, nil
@@ -796,11 +807,9 @@ func (m Model) runTryListAction(action listAction) (tea.Model, tea.Cmd) {
 		tryAction = TryArchive
 	case listActionTryRestore:
 		tryAction = TryRestore
-	case listActionTryGraduate:
-		tryAction = TryGraduate
 	}
 	switch tryAction {
-	case TryMark, TryRestore, TryGraduate:
+	case TryMark, TryRestore:
 		return m.openTryForm(tryAction, row)
 	case TryArchive:
 		return m.openTryConfirmation(tryAction, row)

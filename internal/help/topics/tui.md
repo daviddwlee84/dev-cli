@@ -358,6 +358,11 @@ a          include deprecated, archived, evicted and graduated history
 O / R      cycle / reverse activity/name/phase/size sort
 ```
 
+TRY graduation opens the shared terminal wizard for name/category, local or
+remote publication, preview and confirmation. Existing remotes are preserved;
+a failed remote step retains and reports the completed local project. See
+`dev help tries` for defaults, direct flags and regraduation naming.
+
 Archive is a reversible same-filesystem move under `tries_root/.dev`; it does
 not reclaim disk space. Explicit delete prefers system Trash and retains history.
 The catalog keeps a stable ID, per-host location, tags/note, last-opened time and graduation

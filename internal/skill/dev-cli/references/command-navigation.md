@@ -31,6 +31,35 @@ after an upgrade with `dev self shell-init <shell>`.
 
 ## Try graduation and demotion
 
+### Graduation (v0.3.1)
+
+`dev tries graduate [try]` and `dev graduate` share the terminal/dashboard
+wizard: name, optional category, local (default)/add URL/create GitHub or GitLab,
+then preview and confirm. The reviewed source identity and contents are
+revalidated before apply. `--yes`/`-y` or non-TTY use runs directly from flags;
+`--dry-run` never prompts, probes forge authentication, moves or publishes.
+
+Use `--remote-url` for an existing URL, or `--forge github|gitlab` for creation;
+`--remote` retains automatic create-provider selection. Forge also accepts
+`auto|none`. Creation supports `--namespace` and `--visibility private|public|internal`
+(internal only on GitLab); legacy `--private` remains compatible. Create defaults
+to private with push, add URL to no push; explicit `--push[=false]` overrides.
+Any existing remote blocks add/create and is preserved by local graduation.
+A local name does not rename source code or an existing remote repository.
+
+Regraduation name precedence is explicit `--name`, optional `graduated_name`,
+valid legacy `graduated_path` basename (POSIX or Windows), then date-stripped Try
+name. Fallback is read-only. Only successful local graduation records the name,
+time and path together; category is not remembered. A later remote failure
+keeps these local facts, returns nonzero, and never automatically retries or
+rolls back the local project or completed remote effects. Inspect the reported
+outcome before a follow-up publication action.
+Publication revalidates the graduated checkout and reviewed branch/commit before
+each stage. Drift after remote creation retains the remote and skips push.
+Provider/authentication preflight errors stop before the local move.
+
+### Demotion
+
 `dev tries demote <repo-or-path-or-catalog-id> [--to <path>] [--dry-run]`
 accepts only previously graduated Tries. It returns the current bytes and stable
 identity to the configured Try root as active/present, retaining dirty/untracked/

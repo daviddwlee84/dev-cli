@@ -40,6 +40,50 @@ dev work start parser-rewrite --repo myproject --base main
 Graduation is the bridge: it turns an experiment that earned a future into a
 real repository, after which ordinary task flow applies.
 
+## Graduate with a reviewed name and publication choice
+
+`dev tries graduate [try]` uses the current Try when the argument is omitted.
+In a terminal, the wizard asks for a project name and optional category, offers
+local (default), add an existing URL, or create on GitHub/GitLab, and previews
+the effects before confirmation. TRY's graduate action uses the same wizard.
+
+```bash
+dev tries graduate parser --name parser-core
+dev tries graduate parser --remote-url git@github.com:example/parser-core.git --yes
+dev tries graduate parser --forge github --namespace example --visibility private --yes
+```
+
+`--yes` / `-y` and non-TTY use execute from flags without the wizard. `--dry-run`
+always previews without prompts, authentication probes, graduation or publication.
+Canceling the wizard does not apply either effect. The source identity and
+contents are bound across the reviewed prompts and revalidated before applying.
+
+Any existing remote is preserved, even if it is named upstream rather than
+origin. In that case a requested add/create fails before the move. Renaming the
+local project changes neither source/package/module names nor existing remote
+repository names. New remote creation defaults to private and push; adding a
+URL defaults to no push. Explicit `--push` / `--push=false` overrides those
+publication defaults. Local-only graduation never pushes existing remotes.
+
+`--forge` accepts auto/github/gitlab/none; github/gitlab selects creation.
+`--remote` remains a create shortcut. `--namespace` chooses the new owner/group,
+and `--visibility` accepts private/public/internal (internal is GitLab-only).
+Existing `--private` stays supported; conflicting flags fail before the move.
+
+After demotion, default naming uses explicit `--name`, then the last successful
+local graduation's optional `graduated_name`, then a valid basename from legacy
+`graduated_path`, then the Try name without its date prefix. Legacy POSIX/Windows
+paths are read without catalog migration. Preview/cancel does not save a new
+name; category is not remembered. Successful local graduation records the name,
+time and destination even if subsequent remote work fails.
+
+Remote add/create/push failure returns nonzero and keeps the completed local
+project and any remote effects. Inspect the reported outcome before acting;
+there is no automatic retry, remote rollback or undo of the local graduation.
+Publication checks the graduated checkout and reviewed branch/commit before
+each stage. Changes after remote creation retain that remote and skip push;
+provider/authentication preflight failures stop before the local move.
+
 ## Return a graduated Try
 
 ```bash

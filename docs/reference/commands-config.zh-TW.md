@@ -58,6 +58,16 @@ Bundled skill 的短入口只放核心用途、必要邊界與進階 reference �
 binary。錯誤的 arguments、flags 或 color 值仍會失敗；`--skill=false`
 維持一般啟動流程。本次不新增 CLI flags 或 JSON 欄位。
 
+## Graduate 介面（v0.3.1）
+
+`dev tries graduate [try]` 保留 `--name`、`--category`，新增 `--yes`／`-y`、
+`--remote-url`、`--forge auto|github|gitlab|none`、`--namespace`、
+`--visibility private|public|internal`；既有 `--remote`、`--private`、`--push`
+繼續支援。TTY 使用審閱 wizard，除非 `--yes` 或 `--dry-run` 選擇直接路徑；
+非 TTY 直接執行。Remote 保留規則、各模式預設與部分失敗見
+[Try 畢業](../guides/try-graduation.zh-TW.md)。Try JSON 新增可選
+`experiment.graduated_name`，既有 schema-1 欄位不變。
+
 ## 高價值 structured interfaces
 
 ```bash

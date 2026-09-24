@@ -58,6 +58,17 @@ without loading application config, checking releases or deleting stale Windows
 upgrade binaries. Invalid arguments, flags and color values still fail normally;
 `--skill=false` retains ordinary startup. No CLI flags or JSON fields are changed.
 
+## Graduate interface (v0.3.1)
+
+`dev tries graduate [try]` keeps `--name` and `--category`; it adds `--yes`/`-y`,
+`--remote-url`, `--forge auto|github|gitlab|none`, `--namespace` and
+`--visibility private|public|internal`. Existing `--remote`, `--private` and
+`--push` stay supported. TTY runs use a reviewed wizard unless `--yes` or
+`--dry-run` selects the direct path; non-TTY runs are direct. See
+[Try graduation](../guides/try-graduation.md) for remote-preservation rules,
+mode-specific defaults and partial failures. Try JSON adds the optional
+`experiment.graduated_name`; existing schema-1 fields are unchanged.
+
 ## High-value structured interfaces
 
 ```bash

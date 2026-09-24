@@ -1373,6 +1373,105 @@ current context, activity evidence, and collection warnings.
 
 ---
 
+### Graduate a Try
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/try-graduation/
+
+> Graduate a Try with a reviewed local name and publication choice, retain prior naming across demotion, and understand partial remote failures.
+
+`dev tries graduate [try]` promotes an experiment into
+`<project_root>/<category>/<name>`, retaining its catalog identity and current
+files. Without a Try argument it uses the experiment containing the current
+directory. The permanent `dev graduate` shortcut has the same behavior.
+
+## Choose the name and publication
+
+In a terminal, graduation opens a wizard: choose the project name and optional
+category, choose publication, review the destination and effects, then confirm.
+The default is a local project. TRY → Ctrl+O → graduate opens the same workflow.
+Cancellation returns to and refreshes the dashboard; success leaves the dashboard
+before opening the graduated project or handing off its shell directory.
+
+| Choice | Default behavior |
+|---|---|
+| Local project | Move locally and preserve all existing remotes |
+| Add an existing URL | Add the URL as origin; do not push unless selected |
+| Create on GitHub or GitLab | Create a private repository and push by default |
+
+Publication choices are offered when the Try has no remotes. If it already has
+any remote, even only `upstream`, graduation preserves every remote; an explicit
+add/create request fails before moving. Changing the local project name does
+not rename packages, modules, source code or an existing remote repository.
+
+A Try without Git is initialized, and a first commit is made when needed by the
+existing graduation flow. Moving and publication remain separate effects.
+The reviewed plan binds the source identity and contents across prompts; a
+changed plan must be reviewed again before it can apply.
+
+## Scripts and previews
+
+`--yes` / `-y` bypasses the wizard and confirmation. Noninteractive input also
+uses the explicit flags and defaults directly. `--dry-run` never prompts,
+checks forge authentication, moves files or publishes; it prints the plan.
+Cancellation leaves graduation and publication unapplied.
+
+```bash
+dev tries graduate parser                 # interactive wizard
+dev tries graduate parser --name parser-core --category Tools --dry-run
+dev tries graduate parser --name parser-core --category Tools --yes
+dev tries graduate parser --remote-url git@github.com:example/parser-core.git --yes
+dev tries graduate parser --remote-url git@github.com:example/parser-core.git --push --yes
+dev tries graduate parser --forge github --namespace example --visibility private --yes
+```
+
+`--forge` accepts `auto`, `github`, `gitlab`, or `none`. Explicit `github` or
+`gitlab` selects creation; `--remote` retains the existing create-remote spelling
+and uses automatic provider selection unless overridden. `--namespace` selects
+the new remote owner/group. `--visibility` accepts `private`, `public`, or GitLab's
+`internal`; creation defaults to private. The existing `--private` and `--push`
+flags remain supported.
+
+For creation, push defaults to true. For an added URL it defaults to false;
+explicit `--push` or `--push=false` controls either path. Local graduation does
+not push existing remotes. Conflicting remote choices, create-only flags with
+an added URL, incompatible visibility, or contradictory explicit `--private`
+and `--visibility` fail before the local move.
+
+## Graduate again after demotion
+
+After `dev tries demote`, the next graduation chooses its default name in this
+order:
+
+1. Explicit `--name` for this invocation.
+2. The last successful local graduation's optional `graduated_name`.
+3. A valid project-name basename from legacy `graduated_path` metadata.
+4. The current Try name with its date prefix removed.
+
+Legacy POSIX and Windows paths can supply that fallback without rewriting the
+catalog during reads. Preview and cancellation do not change remembered naming.
+A successful local graduation records its name, time and destination together;
+a later publication failure keeps those completed local facts. Category is
+chosen for the current invocation and is not remembered from the previous one.
+
+Demotion retains current files, Git history and remotes; it does not reverse
+publication. Regraduation therefore normally keeps those remotes and moves
+locally. See [demotion and its move constraints](https://daviddwlee84.github.io/dev-cli/reference/cli-v0.3/#return-a-graduated-repository-to-try).
+
+## If remote work fails
+
+Provider/authentication preflight errors stop before the local move. After the
+move succeeds, an add/create/push failure returns a nonzero exit code and reports
+the completed local graduation separately. The local project and any completed remote effects
+are retained. There is no automatic retry or rollback of publication or the
+local move. Inspect the reported destination and remote outcome before choosing
+a follow-up action; rerunning graduation is not a remote-operation retry.
+
+Publication revalidates the graduated checkout and the reviewed branch/commit
+before each stage. If they change after remote creation, the remote is retained
+and the push is skipped; the result reports the completed and skipped effects.
+
+---
+
 ### Worktrees and provisioning
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/
@@ -3735,7 +3834,7 @@ roots also contain commented `go.mod` boundary markers: Go ignores
 markers declare no product packages or dependencies. Do not place them over
 embedded or generated build inputs, or create empty agent directories.
 
-`python3 scripts/check-distribution.py --version v0.3.0` independently builds
+`python3 scripts/check-distribution.py --version v0.3.1` independently builds
 the actual Git archive and a module ZIP with pinned `golang.org/x/mod v0.38.0`.
 Only a temporary clone disables export attributes for the module test. Both
 payloads are extracted, built and checked for version, help, completions and
@@ -6429,6 +6528,15 @@ cancellation and return the original error with a nonzero exit status. Choosing
 `stage` followed by `open` is valid for a local repository. A missing installer
 can be bypassed by declining or explicitly skipping the optional skill.
 
+## Graduate a Try
+
+TRY → Ctrl+O → graduate opens the same wizard as `dev tries graduate`: choose a
+name/category and local (default), add-URL or create-remote publication, review,
+then confirm. Existing remotes are preserved. Cancellation applies no graduation
+or publication; remote failure reports retained local success separately and
+returns an error without automatic retry or rollback. See
+[Try graduation](https://daviddwlee84.github.io/dev-cli/guides/try-graduation/) for flags, defaults and remembered names.
+
 ## Return a graduated repository to Try
 
 Use REPOS → Ctrl+O → demote to return a previously graduated Try to the experiment
@@ -6529,6 +6637,15 @@ the reviewed plan, never inferred from an arbitrary checked-out branch.
 The dashboard releases its terminal before an attach, shell-directory handoff,
 or external retirement coordinator runs. An ordinary completion/cancellation
 returns to the dashboard. No agent is launched automatically.
+
+## Graduate a Try
+
+TRY → Ctrl+O → graduate opens the same wizard as `dev tries graduate`: choose a
+name/category and local (default), add-URL or create-remote publication, review,
+then confirm. Existing remotes are preserved. Cancellation applies no graduation
+or publication; remote failure reports retained local success separately and
+returns an error without automatic retry or rollback. See
+[Try graduation](https://daviddwlee84.github.io/dev-cli/guides/try-graduation/) for flags, defaults and remembered names.
 
 ## Return a graduated repository to Try
 
@@ -7728,6 +7845,17 @@ retirement, provisioning, SSH or transfer work.
 without loading application config, checking releases or deleting stale Windows
 upgrade binaries. Invalid arguments, flags and color values still fail normally;
 `--skill=false` retains ordinary startup. No CLI flags or JSON fields are changed.
+
+## Graduate interface (v0.3.1)
+
+`dev tries graduate [try]` keeps `--name` and `--category`; it adds `--yes`/`-y`,
+`--remote-url`, `--forge auto|github|gitlab|none`, `--namespace` and
+`--visibility private|public|internal`. Existing `--remote`, `--private` and
+`--push` stay supported. TTY runs use a reviewed wizard unless `--yes` or
+`--dry-run` selects the direct path; non-TTY runs are direct. See
+[Try graduation](https://daviddwlee84.github.io/dev-cli/guides/try-graduation/) for remote-preservation rules,
+mode-specific defaults and partial failures. Try JSON adds the optional
+`experiment.graduated_name`; existing schema-1 fields are unchanged.
 
 ## High-value structured interfaces
 
@@ -11189,11 +11317,16 @@ dev tries graduate [try] [flags]
 ```
 
 - `-c, --category` — category subdirectory under project_root
-- `--dry-run` — show what would happen without moving anything
-- `--name` — project name (default: the try name without its date prefix)
-- `--private` — create the remote as private
-- `--push` — push after creating the remote
-- `--remote` — create a remote repository with gh or glab
+- `--dry-run` — preview without prompting, applying or probing forge authentication
+- `--forge` — upstream provider: auto, github, gitlab or none; github/gitlab selects creation
+- `--name` — project name (default: remembered name, otherwise the Try name without its date prefix)
+- `--namespace` — GitHub owner/org or GitLab namespace for upstream creation
+- `--private` — create a private upstream (compatibility flag)
+- `--push` — push current branch commits (creation: true; existing URL: false unless explicitly set)
+- `--remote` — create a GitHub or GitLab upstream
+- `--remote-url` — add an existing repository URL as origin without creating a remote repository
+- `--visibility` — upstream visibility: private, public, or internal (GitLab only)
+- `-y, --yes` — use the supplied options without the interactive wizard
 
 ### `dev tries list`
 
@@ -12001,6 +12134,10 @@ Documented JSON schemas, task files, catalog identity and TUI tab names remain
 compatible. Shortcuts stay callable even when omitted from the concise root
 listing. `git ignore --stdout` and `--list` still work outside a repository.
 
+From v0.3.1, terminal graduation uses a reviewed name/publication wizard;
+`--yes`, non-TTY and dry-run retain direct paths. See the
+[graduation guide](https://daviddwlee84.github.io/dev-cli/guides/try-graduation/) for flags and remembered names.
+
 ## Return a graduated repository to Try
 
 ```bash
@@ -12056,6 +12193,22 @@ eviction, mirror synchronization, `tries new`/`clone`, or graduation symlinks.
 Source: https://daviddwlee84.github.io/dev-cli/reference/compatibility/
 
 > Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
+
+## Graduate wizard and remembered names (v0.3.1)
+
+TTY graduation now previews and confirms through the shared CLI/TRY wizard.
+`--yes` and non-TTY invocations remain direct; `--dry-run` never prompts or
+publishes. New `--remote-url`, `--forge`, `--namespace` and `--visibility` flags
+extend `[try]`/`--name`; `--remote`, `--private` and `--push` remain supported.
+Any existing remote blocks new add/create requests and is preserved by local
+moves. Remote-step failures now return nonzero while retaining local success
+and completed remote effects, with no automatic retry or rollback.
+
+The optional schema-1 `experiment.graduated_name` records the last successful
+local graduation name alongside its time/path. Legacy records remain readable;
+valid POSIX/Windows `graduated_path` basenames provide in-memory fallback without
+read-time migration. Explicit names win, and categories are not remembered.
+See [Try graduation](https://daviddwlee84.github.io/dev-cli/guides/try-graduation/).
 
 ## v0.3 command paths and Try demotion
 
@@ -13123,6 +13276,11 @@ complete by this structural migration check.
 Source: https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/
 
 > Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
+
+Graduate wizard defaults, publication modes and partial-failure exits come from
+the shared CLI/TUI adapter and its tests. Remembered project-name precedence and
+last-success catalog writes come from the experiment service; read-only legacy
+fallback does not migrate records. See [Try graduation](https://daviddwlee84.github.io/dev-cli/guides/try-graduation/).
 
 Command-family navigation, permanent shortcuts and Try demotion are defined
 by the current Cobra tree, its compatibility tests, the experiment move service
@@ -14904,6 +15062,97 @@ dev activity journal --since 7d | opencode run "summarize this as a weekly repor
 `--json` 輸出 schema version 1，包含 window、authors、完整 aggregate totals、
 shown/omitted commit counts、repository/branch records、optional metrics、current
 context、activity evidence 與 collection warnings。
+
+---
+
+### 讓 Try 畢業
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/
+
+> 透過確認本機名稱與發布選項讓 Try 畢業，保留 demote 後的命名預設，並理解遠端操作部分失敗。
+
+`dev tries graduate [try]` 將實驗搬到
+`<project_root>/<category>/<name>`，保留 catalog identity 與目前檔案。
+省略 Try argument 時，使用目前目錄所在的實驗。永久捷徑 `dev graduate`
+提供相同行為。
+
+## 選擇名稱與發布方式
+
+在 terminal 執行會開啟 wizard：選擇專案名稱與可選的 category、選擇發布方式、
+檢查目的地與效果，最後確認。預設是本機專案。TRY → Ctrl+O → graduate
+使用同一個流程。取消會返回並重新整理 dashboard；成功時先離開 dashboard，
+再開啟畢業專案或進行 shell 目錄交接。
+
+| 選項 | 預設行為 |
+|---|---|
+| 本機專案 | 本機搬移，保留所有既有 remotes |
+| 加入既有 URL | 將 URL 加為 origin；除非選取，否則不 push |
+| 在 GitHub／GitLab 建立 | 建立 private repository，預設 push |
+
+只有 Try 沒有任何 remote 時，才提供發布選項。若已有任一 remote，即使只有
+`upstream`，graduation 也會保留全部 remotes；明確要求新增或建立 remote
+會在搬移前失敗。改本機專案名稱不會改 package、module、原始碼或既有遠端
+repository 的名稱。
+
+沒有 Git 的 Try 會初始化 Git，並沿用既有 graduation 流程在需要時建立第一個
+commit。搬移與發布仍是分開的效果。審閱計畫綁定來源 identity 與內容；
+prompts 期間若計畫變動，必須重新審閱才可套用。
+
+## Scripts 與預覽
+
+`--yes`／`-y` 跳過 wizard 與確認；非互動輸入也直接使用明確 flags 與預設值。
+`--dry-run` 只顯示計畫，不提示輸入、不檢查 forge authentication、不搬檔案、
+不發布。取消不套用 graduation 或 publication。
+
+```bash
+dev tries graduate parser                 # 互動 wizard
+dev tries graduate parser --name parser-core --category Tools --dry-run
+dev tries graduate parser --name parser-core --category Tools --yes
+dev tries graduate parser --remote-url git@github.com:example/parser-core.git --yes
+dev tries graduate parser --remote-url git@github.com:example/parser-core.git --push --yes
+dev tries graduate parser --forge github --namespace example --visibility private --yes
+```
+
+`--forge` 接受 `auto`、`github`、`gitlab`、`none`；明確指定 `github` 或
+`gitlab` 代表建立 remote。既有 `--remote` 保留建立 remote 的用法，未覆寫時
+自動選擇 provider。`--namespace` 指定新 remote 的 owner／group。
+`--visibility` 接受 `private`、`public` 與 GitLab 的 `internal`；建立時預設
+private。既有 `--private` 與 `--push` flags 繼續支援。
+
+建立 remote 預設 push；加入 URL 預設不 push。明確 `--push` 或
+`--push=false` 可控制這兩條路徑。本機 graduation 不 push 既有 remotes。
+互斥的 remote 選項、對 URL 使用建立專用 flags、不相容的 visibility，或明確
+`--private` 與 `--visibility` 矛盾，都會在本機搬移前失敗。
+
+## Demote 後再次畢業
+
+執行 `dev tries demote` 後，下次 graduation 的預設名稱依下列順序選取：
+
+1. 本次明確的 `--name`。
+2. 上次成功本機 graduation 的可選欄位 `graduated_name`。
+3. 舊版 `graduated_path` metadata 中有效的專案名稱 basename。
+4. 目前 Try 名稱去掉日期前綴。
+
+舊 POSIX／Windows 路徑可在記憶體中提供 fallback，不會因讀取而改寫 catalog。
+預覽或取消不改變記住的名稱。成功本機 graduation 會一起記錄名稱、時間與
+目的地；後續發布失敗仍保留這些已完成的本機事實。Category 每次重新選擇，
+不記住上一次的值。
+
+Demote 保留目前檔案、Git history 與 remotes，不撤銷發布。因此再次 graduation
+通常保留這些 remotes 並只在本機搬移。詳見
+[demotion 與搬移條件](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/cli-v0.3/)。
+
+## 遠端操作失敗時
+
+Provider／authentication preflight 失敗會在本機搬移前停止。搬移成功後，
+add／create／push 失敗會回傳非零 exit code，並分別回報已完成的本機 graduation。
+本機專案與已完成的遠端效果都會保留，不自動重試，也不回滾 publication 或本機
+搬移。先檢查回報的目的地與遠端結果，再決定後續動作；再次執行 graduation
+不是重試遠端操作的方法。
+
+發布會在每個步驟前重新驗證畢業 checkout 與審閱過的 branch／commit。
+若在 remote 建立後發生變動，會保留 remote 並跳過 push；結果分別回報
+已完成與跳過的效果。
 
 ---
 
@@ -17012,7 +17261,7 @@ dev-cli 的 release source archive 透過 `.gitattributes` 排除 repo root 的
 但會從父 module ZIP 排除巢狀 module；這些標記沒有產品 package 或依賴。
 不可把標記放在 embedded／generated build inputs 上，也不建立空的 agent 目錄。
 
-`python3 scripts/check-distribution.py --version v0.3.0` 分別產生真正的 Git
+`python3 scripts/check-distribution.py --version v0.3.1` 分別產生真正的 Git
 archive 與使用固定 `golang.org/x/mod v0.38.0` 的 module ZIP；只有暫存 clone
 會停用 module 測試的 export attributes。兩種 payload 都會解壓、編譯，並驗證
 版本、help、completion 與 bundled skill。這不會縮小一般 Git clone 或舊 tags。
@@ -19391,6 +19640,14 @@ browser 也使用此流程。最終 preflight 仍重新檢查；非互動請求�
 狀態回傳原始錯誤。本地 repository 的 `stage` 搭配 `open` 是合法選項；缺少
 installer 時可拒絕或明確略過 optional skill，保留其餘建立設定。
 
+## 讓 Try 畢業
+
+TRY → Ctrl+O → graduate 開啟與 `dev tries graduate` 相同的 wizard：選擇
+名稱／category，以及本機（預設）、加入 URL 或建立 remote，審閱後確認。
+既有 remotes 保留。取消不套用 graduation 或 publication；遠端失敗時分別
+回報保留的本機成功結果與錯誤，不自動重試或回滾。Flags、預設值與記住的名稱
+見 [Try 畢業](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/)。
+
 ## 將已畢業的 repository 退回 Try
 
 在 REPOS → Ctrl+O → demote，可把曾 graduate 的 Try 退回實驗區。
@@ -19478,6 +19735,14 @@ next action，最終建立確認前可選 open（預設）或 stay。Reviewed pl
 
 Attach、shell-directory handoff 或外部 retirement coordinator 都在 Dashboard
 釋放 terminal 後才執行。一般完成或取消則返回 Dashboard，不會自動啟動 agent。
+
+## 讓 Try 畢業
+
+TRY → Ctrl+O → graduate 開啟與 `dev tries graduate` 相同的 wizard：選擇
+名稱／category，以及本機（預設）、加入 URL 或建立 remote，審閱後確認。
+既有 remotes 保留。取消不套用 graduation 或 publication；遠端失敗時分別
+回報保留的本機成功結果與錯誤，不自動重試或回滾。Flags、預設值與記住的名稱
+見 [Try 畢業](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/)。
 
 ## 將已畢業的 repository 退回 Try
 
@@ -20660,6 +20925,16 @@ Bundled skill 的短入口只放核心用途、必要邊界與進階 reference �
 內容，不載入應用程式 config、不檢查 release、不刪除 Windows 升級遺留
 binary。錯誤的 arguments、flags 或 color 值仍會失敗；`--skill=false`
 維持一般啟動流程。本次不新增 CLI flags 或 JSON 欄位。
+
+## Graduate 介面（v0.3.1）
+
+`dev tries graduate [try]` 保留 `--name`、`--category`，新增 `--yes`／`-y`、
+`--remote-url`、`--forge auto|github|gitlab|none`、`--namespace`、
+`--visibility private|public|internal`；既有 `--remote`、`--private`、`--push`
+繼續支援。TTY 使用審閱 wizard，除非 `--yes` 或 `--dry-run` 選擇直接路徑；
+非 TTY 直接執行。Remote 保留規則、各模式預設與部分失敗見
+[Try 畢業](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/)。Try JSON 新增可選
+`experiment.graduated_name`，既有 schema-1 欄位不變。
 
 ## 高價值 structured interfaces
 
@@ -24036,11 +24311,16 @@ dev tries graduate [try] [flags]
 ```
 
 - `-c, --category` — category subdirectory under project_root
-- `--dry-run` — show what would happen without moving anything
-- `--name` — project name (default: the try name without its date prefix)
-- `--private` — create the remote as private
-- `--push` — push after creating the remote
-- `--remote` — create a remote repository with gh or glab
+- `--dry-run` — preview without prompting, applying or probing forge authentication
+- `--forge` — upstream provider: auto, github, gitlab or none; github/gitlab selects creation
+- `--name` — project name (default: remembered name, otherwise the Try name without its date prefix)
+- `--namespace` — GitHub owner/org or GitLab namespace for upstream creation
+- `--private` — create a private upstream (compatibility flag)
+- `--push` — push current branch commits (creation: true; existing URL: false unless explicitly set)
+- `--remote` — create a GitHub or GitLab upstream
+- `--remote-url` — add an existing repository URL as origin without creating a remote repository
+- `--visibility` — upstream visibility: private, public, or internal (GitLab only)
+- `-y, --yes` — use the supplied options without the interactive wizard
 
 ### `dev tries list`
 
@@ -24787,6 +25067,10 @@ integration，取得分類後命令的目錄交接；shell completion 由
 捷徑即使省略於精簡 root listing，仍能直接執行。`git ignore --stdout` 與
 `--list` 仍可在 repository 外執行。
 
+自 v0.3.1 起，terminal graduation 使用可審閱的名稱／發布 wizard；
+`--yes`、非 TTY 與 dry-run 保留直接路徑。Flags 與記住的名稱見
+[畢業指南](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/)。
+
 ## 將已畢業的 repository 退回 Try
 
 ```bash
@@ -24839,6 +25123,20 @@ Repository open／browse／remote／search 體驗保持原樣。本版不新增�
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 
 > 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
+
+## Graduate wizard 與記住的名稱（v0.3.1）
+
+TTY graduation 改用 CLI／TRY 共用 wizard 預覽並確認。`--yes` 與非 TTY
+仍直接執行；`--dry-run` 不提示輸入或發布。新增 `--remote-url`、`--forge`、
+`--namespace`、`--visibility`，保留 `[try]`／`--name` 與既有 `--remote`、
+`--private`、`--push`。存在任一 remote 都會阻擋新增／建立 remote 的請求，
+本機搬移保留全部 remotes。遠端步驟失敗改回傳非零，保留本機成功與已完成
+遠端效果，不自動重試或回滾。
+
+Schema 1 的可選欄位 `experiment.graduated_name` 與時間／路徑一起記錄最後
+成功的本機 graduation 名稱。舊紀錄仍可讀；有效 POSIX／Windows
+`graduated_path` basename 在記憶體中提供 fallback，不在讀取時遷移。
+明確名稱優先，category 不會被記住。見 [Try 畢業](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/)。
 
 ## v0.3 命令路徑與 Try demotion
 
@@ -25765,6 +26063,11 @@ remote。完整歷史 secret audit 仍是獨立操作，這次結構驗證不代
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/
 
 > 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
+
+Graduate wizard 預設、發布模式與部分失敗 exit behavior 以共用 CLI／TUI
+adapter 及測試為準。記住的名稱優先序與最後成功的 catalog 寫入以 experiment
+service 為準；唯讀 legacy fallback 不遷移紀錄。見
+[Try 畢業](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/)。
 
 命令家族導覽、永久捷徑與 Try demotion 的 authority 是目前 Cobra tree、
 相容性測試、experiment move service 與 REPOS 的 guarded action adapter。

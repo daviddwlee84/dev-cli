@@ -9,6 +9,20 @@ lang: zh-TW
 
 # 相容性與已知限制
 
+## Graduate wizard 與記住的名稱（v0.3.1）
+
+TTY graduation 改用 CLI／TRY 共用 wizard 預覽並確認。`--yes` 與非 TTY
+仍直接執行；`--dry-run` 不提示輸入或發布。新增 `--remote-url`、`--forge`、
+`--namespace`、`--visibility`，保留 `[try]`／`--name` 與既有 `--remote`、
+`--private`、`--push`。存在任一 remote 都會阻擋新增／建立 remote 的請求，
+本機搬移保留全部 remotes。遠端步驟失敗改回傳非零，保留本機成功與已完成
+遠端效果，不自動重試或回滾。
+
+Schema 1 的可選欄位 `experiment.graduated_name` 與時間／路徑一起記錄最後
+成功的本機 graduation 名稱。舊紀錄仍可讀；有效 POSIX／Windows
+`graduated_path` basename 在記憶體中提供 fallback，不在讀取時遷移。
+明確名稱優先，category 不會被記住。見 [Try 畢業](../guides/try-graduation.zh-TW.md)。
+
 ## v0.3 命令路徑與 Try demotion
 
 17 個主要入口整理命令導覽；所有舊 root 捷徑、flags、退出行為與已文件化 JSON

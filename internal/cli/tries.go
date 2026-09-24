@@ -377,6 +377,7 @@ type tryJSONExperiment struct {
 	DeprecatedPath string                  `json:"deprecated_path,omitempty"`
 	GraduatedAt    *string                 `json:"graduated_at,omitempty"`
 	GraduatedPath  string                  `json:"graduated_path,omitempty"`
+	GraduatedName  string                  `json:"graduated_name,omitempty"`
 }
 
 type tryJSONLocation struct {
@@ -446,6 +447,7 @@ func makeTryJSONRow(item experiment.Item, host string, measurement sizeMeasureme
 			row.Experiment.DeprecatedPath = experimentMetadata.DeprecatedPath
 			row.Experiment.GraduatedAt = rfc3339Value(experimentMetadata.GraduatedAt)
 			row.Experiment.GraduatedPath = experimentMetadata.GraduatedPath
+			row.Experiment.GraduatedName = experimentMetadata.GraduatedName
 		}
 		if location, ok := item.Entry.LocationFor(host); ok {
 			row.Location = &tryJSONLocation{
