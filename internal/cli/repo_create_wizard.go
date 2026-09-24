@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
-	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
@@ -499,45 +498,16 @@ func promptUpstream(app *App, p *prompter, name string, flags *repoBootstrapFlag
 		flags.remote = false
 		return err
 	}
-	ready := forge.ProbeAll(ctxOf())
-	var available []forge.Readiness
-	for _, candidate := range ready {
-		if candidate.Ready() {
-			available = append(available, candidate)
-		} else {
-			fmt.Fprintf(p.out, "  %s: %s (%s)\n", candidate.Forge, candidate.Status, candidate.Action)
-		}
+	available, err := promptUpstreamCreation(ctxOf(), p, flags)
+	if err != nil {
+		return err
 	}
-	if len(available) == 0 {
+	if !available {
 		fmt.Fprintln(p.out, "  "+p.style.warning("no authenticated GitHub or GitLab CLI is ready; creating locally only"))
 		flags.remote = false
-		return nil
 	}
-	selected := available[0].Forge
-	if len(available) > 1 {
-		choices := map[string]string{"github": "github", "gh": "github", "gitlab": "gitlab", "gl": "gitlab"}
-		choice, err := p.choiceOf("Forge", string(selected), []string{"github", "gitlab"}, choices)
-		if err != nil {
-			return err
-		}
-		selected = forge.Kind(choice)
-	}
-	flags.remote = true
-	flags.forge = string(selected)
-	flags.namespace, err = p.line("Owner / organization / namespace (optional)", flags.namespace)
-	if err != nil {
-		return err
-	}
-	flags.visibility, err = p.choiceOf("Visibility", "private",
-		[]string{"private", "public", "internal"}, map[string]string{
-			"private": "private", "public": "public", "internal": "internal",
-		})
-	if err != nil {
-		return err
-	}
-	flags.push, err = p.confirm("Push the initial branch?", true)
 	_ = name
-	return err
+	return nil
 }
 
 func promptRepoHandoff(p *prompter, fallback string) (string, error) {

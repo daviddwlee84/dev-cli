@@ -30,14 +30,14 @@ A task records human intent; it does not imply a worktree:
 | Command | Checkout boundary | Use when |
 |---|---|---|
 | `dev repo open api` | none; no task | browsing or truly ad-hoc work |
-| `dev start api -t typo --direct` | current branch, usually main | one short tracked change |
-| `dev start api -t small --branch-only --base main` | branch in canonical checkout | lightweight isolation, no concurrency |
-| `dev start api -t auth --base main` | branch + linked worktree | interruption, experiment, parallel writer |
+| `dev work start api -t typo --direct` | current branch, usually main | one short tracked change |
+| `dev work start api -t small --branch-only --base main` | branch in canonical checkout | lightweight isolation, no concurrency |
+| `dev work start api -t auth --base main` | branch + linked worktree | interruption, experiment, parallel writer |
 
-In an interactive terminal, bare `dev start` opens the same managed flow as a
+In an interactive terminal, bare `dev work start` opens the same managed flow as a
 context-aware wizard. It prompts for repo, task, mode, branch, base and next,
 then shows the computed checkout/runtime summary before creating anything.
-`dev start -t <name>` remains the fast path; `--json` and non-TTY use never
+`dev work start -t <name>` remains the fast path; `--json` and non-TTY use never
 prompt.
 
 With a newly created first-class Herdr worktree, `--run '<shell command>'` can
@@ -45,7 +45,7 @@ dispatch one reviewed command to the exact root pane. It is separate from the
 pure `--json` contract, and `--focus` independently controls whether the caller
 switches after dispatch.
 
-Direct tasks go HOT ↔ WARM and finish with plain `dev done`; they cannot go
+Direct tasks go HOT ↔ WARM and finish with plain `dev work done`; they cannot go
 COLD because the canonical checkout cannot be removed. Branch-only tasks can go
 cold after push by switching the canonical checkout back to base. The full
 state machine below describes the default worktree mode.
@@ -66,16 +66,16 @@ checkpoint first when the new task depends on them.
 Only the transitions between them cost anything:
 
 ```
-        dev start
+        dev work start
             │
             ▼
          🔥 hot ── prepare/exit/finalize ──► READY
           │  ▲                                  │
-   dev park│  │dev resume                       │ dev done
+   dev work park│  │dev work resume                       │ dev work done
           ▼  │                                  ▼
         🌤 warm                             ✅ done / MERGED
           │  ▲                                  │
-dev park  │  │dev resume                        │ external dev retire
+dev work park  │  │dev work resume                        │ external dev work retire
   --cold  ▼  │  (rebuilds the worktree)          ▼
         ❄️ cold                              RETIRED (entry removed)
 ```
@@ -88,7 +88,7 @@ moves DONE backward.
 
 ### Plan it by repository
 
-`dev flow [repo]` is an independent preview-labelled, full-screen TUI, not a mode
+`dev repo flow [repo]` is an independent preview-labelled, full-screen TUI, not a mode
 of the dashboard. From a canonical or linked checkout it opens the canonical
 repository and focuses that exact surface; outside Git it opens a repository
 picker. It projects every Git-registered worktree plus task-only records such as
@@ -119,12 +119,12 @@ both. Remote evidence is run-local and limited to named refs plus review
 existence/state/draft/URL/provider/time—not checks or review decisions.
 
 **A machine should hold roughly three to seven hot tasks.** That is a
-cognitive limit, not a technical one. Everything else belongs in `dev ls`.
+cognitive limit, not a technical one. Everything else belongs in `dev work list`.
 
 ## Parking
 
 ```bash
-dev park --next "reproduce the token refresh race, then add a regression test"
+dev work park --next "reproduce the token refresh race, then add a regression test"
 ```
 
 This is the move the whole design exists to make safe. It records what to do
@@ -138,7 +138,7 @@ is the branch and linked checkout.
 you were from a diff, which is most of the cost of a context switch. Always
 supply one.
 
-Before finishing agent work, default `dev prepare` requires committed product
+Before finishing agent work, default `dev agent artifact prepare` requires committed product
 changes and an empty index. Select the exact session UUID, optionally pin its
 `--specstory-path` (v0.2.40), then exit normally. The post-writer finalizer—not
 the still-running agent—preserves the exact transcript in its recorded lane.
@@ -154,9 +154,9 @@ history, review or commits are complete.
 Useful variations:
 
 ```bash
-dev park --wip                    # checkpoint uncommitted work first
-dev park --cold --push            # close session, push, remove worktree
-dev park --keep-session           # warm only: record state, keep session
+dev work park --wip                    # checkpoint uncommitted work first
+dev work park --cold --push            # close session, push, remove worktree
+dev work park --keep-session           # warm only: record state, keep session
 ```
 
 `--cold --keep-session` is rejected because a runtime must not remain pointed at
@@ -182,9 +182,9 @@ rebase, or squash it, and decide then.
 Going cold removes the checkout. That feels lossy, and is not, because:
 
 - the branch still holds every commit;
-- `dev park --cold` refuses unless the branch is pushed, so the remote holds
+- `dev work park --cold` refuses unless the branch is pushed, so the remote holds
   them too;
-- `dev resume` rebuilds the worktree from `origin/<branch>`.
+- `dev work resume` rebuilds the worktree from `origin/<branch>`.
 
 Resume rebuilds/reopens checkout and runtime state only. Persisted runtime
 handles carry their backend name and are validated against live checkout
@@ -203,13 +203,13 @@ the multiplexer's database between machines — sync branches.
 On the machine holding the work:
 
 ```bash
-dev park --cold --push
+dev work park --cold --push
 ```
 
 On the machine picking it up:
 
 ```bash
-dev resume <task> --fetch
+dev work resume <task> --fetch
 ```
 
 **One writer per branch at a time.** `dev` records an `owner` host and refuses
@@ -228,9 +228,9 @@ across machines. Point `paths.state_dir` at one if you want a shared view.
 ## Sweeping
 
 ```bash
-dev sweep            # report only
-dev sweep --apply    # act, confirming each change
-dev sweep --merged-worktrees  # from main, include untracked contained worktrees
+dev work sweep            # report only
+dev work sweep --apply    # act, confirming each change
+dev work sweep --merged-worktrees  # from main, include untracked contained worktrees
 ```
 
 `sweep` reports two kinds of problem:
@@ -255,7 +255,7 @@ intents, active/mixed runtimes, detached heads and unmerged branches are
 reported as blockers. Safe candidates still require `--apply` and individual
 confirmation; `--delete-branches` is a separate opt-in.
 
-`dev sweep --base <ref>` also forwards the selected base to DONE task retirement;
+`dev work sweep --base <ref>` also forwards the selected base to DONE task retirement;
 `--merged-worktrees` uses its verified base for managed tasks as well as unmanaged
 checkouts. Reviewed retire/remove plans bind worktree-list authority only to the
 same branch or paths equal to, containing, or nested under the target. Removing
@@ -273,17 +273,17 @@ through the same external-only retirement safety service; their records are not
 reaped first.
 
 The dashboard does not silently reconcile these states. A normal COLD worktree
-task points to explicit `dev resume`. A task whose recorded worktree is missing
-or no longer registered points to `dev sweep`; generic Enter refuses to open
+task points to explicit `dev work resume`. A task whose recorded worktree is missing
+or no longer registered points to `dev work sweep`; generic Enter refuses to open
 either the canonical checkout or an artifact-only directory. If sweep reports
 unique agent artifacts, salvage them before approving a resume/reap action.
 
 ## Integration
 
 ```bash
-dev done --ff     # rebase onto the base, then fast-forward it
-dev done --pr     # push and open a pull/merge request via the detected forge CLI
-dev done          # TTY: inspect commits/dirty content and choose interactively
+dev work done --ff     # rebase onto the base, then fast-forward it
+dev work done --pr     # push and open a pull/merge request via the detected forge CLI
+dev work done          # TTY: inspect commits/dirty content and choose interactively
 ```
 
 Which one depends on a single question: **are this branch's commits worth
@@ -294,7 +294,7 @@ keeping in the base's history?**
 - No, it is WIP noise → squash at the integration point.
 - Someone (or CI) should look first → `--pr`.
 
-On a TTY, `dev done` reports branch ahead/behind plus which staged, unstaged and
+On a TTY, `dev work done` reports branch ahead/behind plus which staged, unstaged and
 untracked paths are already equivalent to the base. It can commit all changes,
 discard all changes, or cancel before choosing FF/PR. Unique content requires
 typing `DROP`; scripts use `--dirty=commit --message ...` or the deliberately
@@ -324,21 +324,21 @@ recovery command. Dirty submodules and nested repositories remain blockers.
 The discard is a separate explicit taskflow effect and no unrelated canonical
 bytes are committed automatically.
 
-For branch/worktree tasks, non-interactive `dev done` without an integration
+For branch/worktree tasks, non-interactive `dev work done` without an integration
 mode remains report-only. Direct tasks still finish without one. Conflicted
 checkouts always require manual resolution.
 
 Explicit `--ff` integrates and records DONE/MERGED while retaining the worktree
-and branch for `dev retire`. Any explicitly selected task agent pane closures
+and branch for `dev work retire`. Any explicitly selected task agent pane closures
 are recorded in the result ledger; no parent pane is closed. `--pr` only publishes and
 opens review; after a commit-preserving external merge use
-`dev done --merged --base-ref <ref>`. Squash requires explicit
+`dev work done --merged --base-ref <ref>`. Squash requires explicit
 `--confirm-squash <commit>` attestation. `--delete-branch` and `--keep-worktree`
 are deprecated on `done`: the branch is deleted only by
-`dev retire --delete-branch`, and only when git agrees it is fully contained in
+`dev work retire --delete-branch`, and only when git agrees it is fully contained in
 the base. "Merged" is not always "finished", so branches survive by default.
 
-`dev retire --base <ref>` overrides the containment target, resolving a local
+`dev work retire --base <ref>` overrides the containment target, resolving a local
 branch, then remote-tracking ref (for example `origin/main`), then commit. Apply
 re-resolves that input; a changed kind/ref/OID makes the plan stale. A recorded
 fork-point commit stays the base, not the default branch; when it cannot prove
@@ -348,8 +348,8 @@ carries X into the cleanup hint, wizard and external coordinator handoff.
 a non-HEAD base can yield partial completion with the branch and DONE task kept.
 
 Cleanup is never inferred from agent lifecycle state. A user must select it in
-the post-MERGED wizard or run `dev retire` from a different checkout/runtime;
+the post-MERGED wizard or run `dev work retire` from a different checkout/runtime;
 both paths revalidate, close eligible sessions, wait for release, and remove
 without force. Read `agent-retirement.md` before retiring an agent-owned checkout.
 
-Dashboard row actions now invoke these same finish/resume/retire workflows. Missing checkout recovery is scoped with `dev sweep --task <id>`. See [dashboard actions](dashboard-actions.md).
+Dashboard row actions now invoke these same finish/resume/retire workflows. Missing checkout recovery is scoped with `dev work sweep --task <id>`. See [dashboard actions](dashboard-actions.md).

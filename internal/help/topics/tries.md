@@ -14,12 +14,13 @@ so the history survives every move.
 ## The lifecycle
 
 ```bash
-dev try scratch-parser        # create it, or open it if it already exists
+dev tries try scratch-parser        # create it, or open it if it already exists
 dev tries list                # what is active
 dev tries mark scratch-parser --add spike --note "compare two tokenizers"
 dev tries archive scratch-parser   # out of sight, ID and metadata kept
 dev tries restore scratch-parser   # back into a visible path
-dev graduate scratch-parser        # promote it into a real project
+dev tries graduate scratch-parser        # promote it into a real project
+dev tries demote scratch-parser --dry-run # preview returning a graduated Try
 ```
 
 `dev tries deprecate` marks an experiment finished without moving anything, for
@@ -28,20 +29,100 @@ as active work. `dev tries reactivate` undoes it.
 
 ## What is not a Try
 
-A Try is not a task and not a worktree. It has no branch, no base, and no
-lifecycle state — nothing to park or resume. If the work needs a branch and an
-integration path, start a task instead:
+A Try is catalog identity, not a task mode or task lifecycle state. It may
+contain Git history and branches, but cannot itself be parked or resumed. If
+work needs tracked task intent and an integration path, start a task:
 
 ```bash
-dev start parser-rewrite --repo myproject --base main
+dev work start parser-rewrite --repo myproject --base main
 ```
 
 Graduation is the bridge: it turns an experiment that earned a future into a
 real repository, after which ordinary task flow applies.
 
+## Graduate with a reviewed name and publication choice
+
+`dev tries graduate [try]` uses the current Try when the argument is omitted.
+In a terminal, the wizard asks for a project name and optional category, offers
+local (default), add an existing URL, or create on GitHub/GitLab, and previews
+the effects before confirmation. TRY's graduate action uses the same wizard.
+
+```bash
+dev tries graduate parser --name parser-core
+dev tries graduate parser --remote-url git@github.com:example/parser-core.git --yes
+dev tries graduate parser --forge github --namespace example --visibility private --yes
+```
+
+`--yes` / `-y` and non-TTY use execute from flags without the wizard. `--dry-run`
+always previews without prompts, authentication probes, graduation or publication.
+Canceling the wizard does not apply either effect. The source identity and
+contents are bound across the reviewed prompts and revalidated before applying.
+
+Any existing remote is preserved, even if it is named upstream rather than
+origin. In that case a requested add/create fails before the move. Renaming the
+local project changes neither source/package/module names nor existing remote
+repository names. New remote creation defaults to private and push; adding a
+URL defaults to no push. Explicit `--push` / `--push=false` overrides those
+publication defaults. Local-only graduation never pushes existing remotes.
+
+`--forge` accepts auto/github/gitlab/none; github/gitlab selects creation.
+`--remote` remains a create shortcut. `--namespace` chooses the new owner/group,
+and `--visibility` accepts private/public/internal (internal is GitLab-only).
+Existing `--private` stays supported; conflicting flags fail before the move.
+
+After demotion, default naming uses explicit `--name`, then the last successful
+local graduation's optional `graduated_name`, then a valid basename from legacy
+`graduated_path`, then the Try name without its date prefix. Legacy POSIX/Windows
+paths are read without catalog migration. Preview/cancel does not save a new
+name; category is not remembered. Successful local graduation records the name,
+time and destination even if subsequent remote work fails.
+
+Remote add/create/push failure returns nonzero and keeps the completed local
+project and any remote effects. Inspect the reported outcome before acting;
+there is no automatic retry, remote rollback or undo of the local graduation.
+Publication checks the graduated checkout and reviewed branch/commit before
+each stage. Changes after remote creation retain that remote and skip push;
+provider/authentication preflight failures stop before the local move.
+
+## Return a graduated Try
+
+```bash
+dev tries demote <repo-or-path-or-catalog-id> --dry-run
+dev tries demote <repo-or-path-or-catalog-id>
+dev tries demote <catalog-id> --to ~/src/tries/2026-09-24-parser
+```
+
+Only a repository previously graduated from a Try can be demoted. The CLI shows
+source and destination and applies the move; `--dry-run` only previews. REPOS's
+action menu previews the same plan and asks for confirmation.
+
+Run from outside the checkout. A destination must be an immediate visible child
+of the current Try root, and runtime coverage must be observable; `none` does
+not prove that the checkout is unused.
+
+The recorded original Try path is the default. If it is occupied or outside the
+current `tries_root`, choose a safe destination explicitly with `--to`. Demote
+keeps catalog ID, tags, notes, graduation history, Git history/remotes and every
+current file, including dirty, untracked and ignored data. The Try is active and
+present again. It never reverses commits/publication or leaves a symlink.
+
+Task/runtime/agent/artifact claims are not retargeted. Canonical repositories
+with linked worktrees, unsafe paths, incomplete observations and stale plans
+block the move. Revalidation and interrupted-move recovery still apply.
+
+| Dimension | Transitions |
+|---|---|
+| Identity | Try → graduate → Repo → demote → Try |
+| Intent | active → deprecate → deprecated → reactivate → active |
+| Storage | Try → archive → Archive → restore → Try |
+| Disposal | Try → delete → Trash; restore there, then tries restore --from |
+
+Deprecation does not move files. Permanent deletion cannot be restored. Remote
+existence or a synced branch does not prove that all local data is recoverable.
+
 ## Moves are guarded
 
-Archive, restore, and graduate all move directories. Each one revalidates the
+Archive, restore, graduate and demote all move directories. Each one revalidates the
 source, refuses to cross a filesystem boundary silently, rejects a path that
 escapes its root through a symlink or `..`, and records an intent so an
 interrupted move can be rolled back or reconciled rather than left half-done.

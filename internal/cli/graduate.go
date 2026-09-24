@@ -1,120 +1,62 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/daviddwlee84/dev-cli/internal/config"
-	"github.com/daviddwlee84/dev-cli/internal/experiment"
-	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/spf13/cobra"
 )
 
-func newGraduateCmd(app *App) *cobra.Command {
-	return newGraduateCmdWithUse(app, "graduate [try]")
-}
+func newGraduateCmd(app *App) *cobra.Command { return newGraduateCmdWithUse(app, "graduate [try]") }
 
 func newGraduateCmdWithUse(app *App, use string) *cobra.Command {
-	var (
-		category string
-		name     string
-		private  bool
-		remote   bool
-		push     bool
-		dryRun   bool
-	)
+	flags := defaultGraduateFlags()
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: "Promote an experiment into a real project",
-		Long: `Move a try out of the scratch directory and into your projects tree.
+		Long: `Move a Try into <project_root>/<category>/<name>, preserving its catalog
+identity, tags, notes, provenance and current files. --name sets the project
+name; [try] always selects the source. With no argument, use the current Try.
 
-An experiment that turns out to matter should stop being an experiment, and
-that transition is where things usually get lost — the directory keeps its date
-prefix forever, or it gets copied by hand and the history is left behind.
+Interactive terminals review the name, category and optional upstream in a
+wizard. --yes and non-interactive calls use the supplied flags directly.
+--dry-run never prompts, probes authentication, moves files or publishes.
 
-graduate moves the directory to <project_root>/<category>/<name>, drops the
-date prefix, makes sure it has a git repo and a first commit, and optionally
-creates the remote with gh or glab.
-
-With no argument, the try containing the current directory is used.`,
+Existing remotes are preserved. For a Try without remotes, --remote creates a
+GitHub/GitLab repository; --remote-url attaches an existing URL as origin.
+Creation defaults to private with a push; attaching a URL only pushes when
+--push is explicitly supplied. A publication failure keeps the graduated local
+project and reports a nonzero partial result without retrying the creation.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := ctxOf()
-			service, err := newExperimentService(app)
-			if err != nil {
-				return err
-			}
+			flags.pushSet = cmd.Flags().Changed("push")
+			flags.privateSet = cmd.Flags().Changed("private")
+			flags.urlSet = cmd.Flags().Changed("remote-url")
 			ref := ""
 			if len(args) == 1 {
 				ref = args[0]
 			}
-			request := experiment.GraduateRequest{
-				Ref: ref, Category: category, Name: name, DryRun: dryRun,
-			}
-			plan, err := service.PlanGraduate(ctx, request)
-			warnExperimentDiagnostics(app, plan.Diagnostics)
-			if err != nil {
-				return err
-			}
-
-			fmt.Fprintf(app.Out, "graduate  %s\n", config.Contract(plan.Source))
-			fmt.Fprintf(app.Out, "       →  %s\n", config.Contract(plan.Destination))
-			if dryRun {
-				fmt.Fprintln(app.Out, "\n(dry run — nothing moved)")
+			err := runGraduateWorkflow(cmd.Context(), app, ref, nil, flags, false)
+			if errors.Is(err, errPromptCanceled) {
+				fmt.Fprintln(app.Out, "Canceled; nothing was graduated.")
 				return nil
 			}
-
-			result, err := service.Graduate(ctx, request)
-			if err != nil {
-				return err
-			}
-			if result.GitInitialized {
-				fmt.Fprintln(app.Out, "   git init")
-			}
-			if result.InitialCommitMade {
-				fmt.Fprintln(app.Out, "   committed the existing work")
-			}
-
-			if remote {
-				adapter, err := forge.Preferred()
-				if err != nil {
-					app.warnf("%v — the project is in place; add a remote by hand", err)
-				} else {
-					remoteURL, createErr := adapter.CreateRepo(ctx, result.Plan.Destination, forge.RepoRequest{
-						Name: result.Plan.Name, Private: private, Push: push,
-					})
-					if createErr != nil {
-						app.warnf("could not create the remote: %v", createErr)
-					} else {
-						fmt.Fprintf(app.Out, "   remote    %s\n", remoteURL)
-					}
-					// A forge command can add origin successfully and then fail while
-					// pushing. Refresh after every attempt so that partial success does not
-					// leave catalog provenance stale; a wholly failed create needs no
-					// second warning about its expected missing origin.
-					if refreshed, refreshErr := service.RefreshOrigin(ctx, result.Item.ID); refreshErr == nil {
-						result.Item = refreshed
-					} else if createErr == nil {
-						app.warnf("remote was created, but catalog origin metadata could not be refreshed: %v", refreshErr)
-					}
-				}
-			}
-
-			fmt.Fprintf(app.Out, "\n%s is now a project. Start work on it with:\n  dev start %s --task <name>\n",
-				result.Plan.Name, result.Plan.Name)
-			target := result.Item.OpenTarget()
-			if err := openOrCD(app, ctx, target.Path, result.Plan.Name); err != nil {
-				return err
-			}
-			_, err = service.Touch(ctx, result.Item.ID)
 			return err
 		},
 	}
-	flags := cmd.Flags()
-	flags.StringVarP(&category, "category", "c", "", "category subdirectory under project_root")
-	flags.StringVar(&name, "name", "", "project name (default: the try name without its date prefix)")
-	flags.BoolVar(&private, "private", true, "create the remote as private")
-	flags.BoolVar(&remote, "remote", false, "create a remote repository with gh or glab")
-	flags.BoolVar(&push, "push", true, "push after creating the remote")
-	flags.BoolVar(&dryRun, "dry-run", false, "show what would happen without moving anything")
+	f := cmd.Flags()
+	f.StringVarP(&flags.category, "category", "c", "", "category subdirectory under project_root")
+	f.StringVar(&flags.name, "name", "", "project name (default: remembered name, otherwise the Try name without its date prefix)")
+	f.BoolVar(&flags.upstream.private, "private", true, "create a private upstream (compatibility flag)")
+	f.BoolVar(&flags.upstream.remote, "remote", false, "create a GitHub or GitLab upstream")
+	f.BoolVar(&flags.upstream.push, "push", true, "push current branch commits (creation: true; existing URL: false unless explicitly set)")
+	f.StringVar(&flags.remoteURL, "remote-url", "", "add an existing repository URL as origin without creating a remote repository")
+	f.StringVar(&flags.upstream.forge, "forge", "auto", "upstream provider: auto, github, gitlab or none; github/gitlab selects creation")
+	f.StringVar(&flags.upstream.namespace, "namespace", "", "GitHub owner/org or GitLab namespace for upstream creation")
+	f.StringVar(&flags.upstream.visibility, "visibility", "", "upstream visibility: private, public, or internal (GitLab only)")
+	f.BoolVarP(&flags.yes, "yes", "y", false, "use the supplied options without the interactive wizard")
+	f.BoolVar(&flags.dryRun, "dry-run", false, "preview without prompting, applying or probing forge authentication")
+	registerFlagCompletion(cmd, "forge", fixedCompletions("auto", "github", "gitlab", "none"))
+	registerFlagCompletion(cmd, "visibility", fixedCompletions("private", "public", "internal"))
 	return cmd
 }

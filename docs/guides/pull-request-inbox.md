@@ -99,12 +99,12 @@ A forge reporting a merged request is evidence, not retirement authorization:
 
 ```bash
 dev pr list --scope local --state merged   # candidates
-dev sweep --merged-worktrees               # proves containment, reports first
+dev work sweep --merged-worktrees               # proves containment, reports first
 ```
 
 A squash merge does not make the local feature branch an ancestor of the base,
-so the forge answer alone cannot prove recovery. `dev sweep
---merged-worktrees` proves containment locally, while `dev done --merged`
+so the forge answer alone cannot prove recovery. `dev work sweep
+--merged-worktrees` proves containment locally, while `dev work done --merged`
 requires explicit squash attestation where applicable. Treat the inbox as a
 reason to inspect, never as permission to delete.
 
@@ -112,9 +112,9 @@ For deterministic agent-readable triage, use the generic prompt surface rather
 than a PR subcommand:
 
 ```bash
-dev prompt render pr-triage
-dev prompt run pr-triage --agent my-agent
-dev prompt open pr-triage --agent my-agent
+dev agent prompt render pr-triage
+dev agent prompt run pr-triage --agent my-agent
+dev agent prompt open pr-triage --agent my-agent
 ```
 
 See [Prompt handoffs](prompt-handoffs.md) for recipe, configuration, transport,
@@ -124,7 +124,7 @@ TTY, permission, and runtime boundaries.
 
 `gh` and `glab` are optional and independent. A signed-out provider is reported
 under the table with the exact login command, while another ready provider still
-contributes rows. `dev doctor` reports the same state. In JSON, inspect
+contributes rows. `dev self doctor` reports the same state. In JSON, inspect
 `providers` before concluding that an empty `pull_requests` array means an empty
 inbox.
 

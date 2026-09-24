@@ -2,7 +2,7 @@
 description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
-verified_on: 2026-09-13
+verified_on: 2026-09-24
 lang: zh-TW
 ---
 
@@ -52,32 +52,32 @@ flowchart TD
     accTitle: dev-cli lifecycle states
     accDescr: Task 會在 HOT、WARM 與符合條件的 COLD state 之間移動；direct completion、本機 fast-forward 或具名 ancestry verification 會進入 DONE；review 不改變目前 state；Retire 才回收 local resources 與 task entry。
 
-    Start["dev start"] --> Hot["HOT"]
-    Hot -->|dev park --next| Warm["WARM"]
-    Warm -->|dev resume| Hot
-    Hot -->|branch/worktree: dev park --cold --push| Cold["COLD"]
-    Warm -->|branch/worktree: dev park --cold --push| Cold
-    Cold -->|dev resume --fetch| Hot
+    Start["dev work start"] --> Hot["HOT"]
+    Hot -->|dev work park --next| Warm["WARM"]
+    Warm -->|dev work resume| Hot
+    Hot -->|branch/worktree: dev work park --cold --push| Cold["COLD"]
+    Warm -->|branch/worktree: dev work park --cold --push| Cold
+    Cold -->|dev work resume --fetch| Hot
 
-    Hot -->|direct: dev done| Done["DONE / MERGED"]
-    Warm -->|direct: dev done| Done
-    Hot -->|branch/worktree: dev done --ff| Done
-    Warm -->|branch/worktree: dev done --ff| Done
+    Hot -->|direct: dev work done| Done["DONE / MERGED"]
+    Warm -->|direct: dev work done| Done
+    Hot -->|branch/worktree: dev work done --ff| Done
+    Warm -->|branch/worktree: dev work done --ff| Done
 
-    Hot -.->|branch/worktree: dev done --pr；state 不變| Review["push / review handoff"]
-    Warm -.->|branch/worktree: dev done --pr；state 不變| Review
-    Review -.->|feedback：若為 WARM 先 dev resume| Hot
-    Review -->|dev done --merged --base-ref REF| Done
+    Hot -.->|branch/worktree: dev work done --pr；state 不變| Review["push / review handoff"]
+    Warm -.->|branch/worktree: dev work done --pr；state 不變| Review
+    Review -.->|feedback：若為 WARM 先 dev work resume| Hot
+    Review -->|dev work done --merged --base-ref REF| Done
 
-    Done -->|dev retire；或先由 dev sweep 回報| Retire["guarded Retire plan"]
+    Done -->|dev work retire；或先由 dev work sweep 回報| Retire["guarded Retire plan"]
     Retire --> Reaped["RETIRED：runtime/worktree/task 已回收"]
 ```
 
-對 branch/worktree task 而言，`dev done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態。外部 merge 不會被自動推斷；請以 `dev done --merged --base-ref <ref>` 或 `dev flow` 的 Verify Merged action 明確證明 named ancestry，再以獨立 Retire plan cleanup。
+對 branch/worktree task 而言，`dev work done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態。外部 merge 不會被自動推斷；請以 `dev work done --merged --base-ref <ref>` 或 `dev repo flow` 的 Verify Merged action 明確證明 named ancestry，再以獨立 Retire plan cleanup。
 
 ## Intent、evidence 與 action readiness
 
-Lifecycle state 只保存人類意圖，不會吸收所有外部事實。`dev flow [repo]` 把三層並列：recorded `HOT/WARM/COLD/DONE` intent、具 freshness 的 Git/runtime/agent/artifact/remote evidence，以及綁定 exact identity 的 guarded plan。`READY` 是某份 plan 的 action readiness；`REVIEW`、`MERGED` 與 `RETIRED` 是 result milestones，皆不是額外 TOML state。UNKNOWN/ERROR evidence 不會被當成 clean、closed 或 absent。完整操作方式見 [Repository Flow 預覽](../guides/repository-flow.zh-TW.md)。
+Lifecycle state 只保存人類意圖，不會吸收所有外部事實。`dev repo flow [repo]` 把三層並列：recorded `HOT/WARM/COLD/DONE` intent、具 freshness 的 Git/runtime/agent/artifact/remote evidence，以及綁定 exact identity 的 guarded plan。`READY` 是某份 plan 的 action readiness；`REVIEW`、`MERGED` 與 `RETIRED` 是 result milestones，皆不是額外 TOML state。UNKNOWN/ERROR evidence 不會被當成 clean、closed 或 absent。完整操作方式見 [Repository Flow 預覽](../guides/repository-flow.zh-TW.md)。
 
 ## Checkout mode
 
@@ -95,9 +95,9 @@ Task 記錄的是意圖，不一定要有 linked worktree。
 
 `runtime.Runtime` 提供 `Open`、`Close`、`List` 與 `Annotate`。`auto` 會依序選 Herdr、tmux、Zellij，最後使用永遠可用的 `none` backend。關閉任何 backend 都不能移除 checkout、branch 或 task entry。
 
-`none` 只表示沒有可觀察的 multiplexer backend，不等於已證明「沒有 session 或 agent」。需要 occupancy/absence proof 的 guarded action 必須保留 unobserved evidence；`dev flow` 不會把它顯示成已關閉，也不提供 `--assume-no-runtime` expert override。
+`none` 只表示沒有可觀察的 multiplexer backend，不等於已證明「沒有 session 或 agent」。需要 occupancy/absence proof 的 guarded action 必須保留 unobserved evidence；`dev repo flow` 不會把它顯示成已關閉，也不提供 `--assume-no-runtime` expert override。
 
-因此 reboot、關閉 multiplexer 或更換 runtime backend 都不代表放棄工作。`dev sweep` 能比較 registry 與即時 Git/runtime facts 並回報 drift。
+因此 reboot、關閉 multiplexer 或更換 runtime backend 都不代表放棄工作。`dev work sweep` 能比較 registry 與即時 Git/runtime facts 並回報 drift。
 
 ## 跨機器 handoff
 
@@ -105,10 +105,10 @@ Branch 是傳輸邊界：
 
 ```bash
 # machine A
-dev park --cold --push
+dev work park --cold --push
 
 # machine B
-dev resume <task> --fetch
+dev work resume <task> --fetch
 ```
 
 每個 branch 同時只有一位 writer。若兩台機器或兩個 agent 必須同時修改同一 feature，應拆成不同 change stream，再於之後整合。
@@ -153,7 +153,7 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 
 REPOS 顯示快照及 Skills 的附時間來源比較屬可重建 cache；skill lock 與安裝檔案
 仍是原生管理工具的資料。Heatmap 的 Git checkpoint 放在 stats.db，與活動觀察一起
-保留；清除 cache 不清除活動。跨 repo skills 維護使用獨立 `dev skill manage`
+保留；清除 cache 不清除活動。跨 repo skills 維護使用獨立 `dev agent skill manage`
 wizard，不把 cache 或「有更新」狀態當成自動修改授權。
 
 ## Canonical machines 與 connection profiles
@@ -180,3 +180,14 @@ policy 把副本存進另一個 Git checkout，保留 private 本機 plan／reco
 [AI 產物](../guides/ai-artifacts.md)。
 
 SSH dashboard 使用紀錄是 host-local durable observation，與機器身分及 discovery cache 分開。USED 是本機透過 dev 真正啟動 SSH 的時間；測試時間及驗證成功觀測獨立保存。舊觀測不能授權清理，也不能證明目前連通。
+
+## Try 身份與存放位置
+
+Try 的 graduation／demotion 保留穩定 catalog identity：
+`Try → graduate → Repo → demote → Try`。Demote 只接受曾 graduate 的 Try，
+保留目前 Git history、remotes 與檔案內容；在目前 Try root 恢復為 active／present，
+但必須通過使用權與搬移 guards。它不回滾期間發生的 Git 操作。
+
+意圖與存放位置分開。Deprecate／reactivate 改變 active intent 而不搬檔案。
+Archive／restore 搬移保留的 bytes；delete 預設使用系統 Trash，先從系統
+還原內容，才能 `tries restore --from`。詳見 [v0.3 轉換指南](../reference/cli-v0.3.zh-TW.md)。

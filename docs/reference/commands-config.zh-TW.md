@@ -2,13 +2,13 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-18
+verified_on: 2026-09-24
 lang: zh-TW
 ---
 
 # 命令與設定
 
-`dev submodule add [source] [path]` 與 `dev repo add-as-submodule` 共用
+`dev git submodule add [source] [path]` 與 `dev repo add-as-submodule` 共用
 `--parent`、`--checkout=pinned|default-branch`、pinned 專用的 `--ref`、
 `--submodules=recursive|none`、`--dry-run`、`--yes`、`--json`。只 stage 新增的
 metadata／gitlink，失敗回報部分結果 phase；見 [Submodule 工作區](../guides/submodule-workspaces.zh-TW.md)。
@@ -18,32 +18,25 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-用人工整理的 map 理解 intent，再用 embedded generated reference 查精確 flags。Generated block 來自 binary 的 Cobra command tree，並由 `dev skill sync --check` 驗證。
+用人工整理的 map 理解 intent，再用 embedded generated reference 查精確 flags。Generated block 來自 binary 的 Cobra command tree，並由 `dev agent skill sync --check` 驗證。
 
 ## Command map
 
+Root 列出 17 個主要入口；既有頂層命令保留為永久捷徑，arguments、輸出與
+completion 保持相容。`dev help --tree` 預設展開兩層，`--depth 0` 展開全部，
+可追加命令路徑聚焦子樹，用 `--aliases` 顯示捷徑。見 [v0.3 遷移指南](cli-v0.3.zh-TW.md)。
+
 | 目標 | Commands |
 |---|---|
-| task lifecycle | `start`、`park`、`resume`、`done`、`retire`、`sweep`、`ls`、`status` |
-| agent artifacts | `prepare`、`artifact status/setup/archive/find/migrate/sync/backup`、`artifact finalize/list/discard` |
-| guarded Git transactions | `git uncommit`、`git recommit`、`git pull-rebase`、`git amend-all`、`git setup` |
-| linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
-| repositories/remotes | `repo list`、`repo context`、`repo new`/`repo create`、`repo clone`、`repo setup`、`repo open`、`repo sync`、`repo remote`、`repo mark` |
-| repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
-| machine inventory | `bootstrap`、`adopt`、`doctor` |
-| experiments | `try`、`tries …`、`graduate` |
-| terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
-| configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor/derive`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh connect`、`ssh probe`、`ssh remove` |
-| dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
-| remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
-| pull-request inventory | `pr list` |
-| prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
-| agent skills | `skill list`、`skill manage`、`skill add`、`skill update`、`skill install`、`skill uninstall`、`skill sync`、`skill print` |
-| static MCP declarations | `mcp list` |
-| generated policy/assets | `gitignore`、`skill install/sync` |
-| activity/data | `summary`、`journal`、`stats …`、`cache …` |
-| help | `help [topic]` |
+| 追蹤工作 | `work list/start/park/resume/done/adopt/retire/sweep` |
+| Repository／Remote | `repo list/context/new/clone/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| 實驗 | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
+| Git 與 checkout 支援 | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
+| Coding agent 支援 | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
+| 活動 | `activity journal`, `activity stats …` |
+| dev 安裝與設定 | `self config …`, `self cache …`, `self doctor`, `self version`, `self upgrade`, `self completion`, `self shell-init`, `self feedback …` |
+| 獨立入口 | `snippet`, `ssh`, `fleet`, `dotfile`, `pr`, `summary`, `triage`, `status`, `tui`, `help` |
+
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。
 
@@ -56,19 +49,29 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 [目前分頁的 Help](../guides/tui-repos-bootstrap.zh-TW.md)。
 
 Bundled skill 的短入口只放核心用途、必要邊界與進階 reference 的條件連結。
-`dev --skill`、`dev skill print` 與 `dev skill install` 寫入的 `SKILL.md`
+`dev --skill`、`dev agent skill print` 與 `dev agent skill install` 寫入的 `SKILL.md`
 仍逐 byte 相同。安裝會保留完整 references，但 agent 不必預先載入；只有
 進階協作、retirement、provisioning、SSH 或 transfer 工作才讀對應文件。
 
-值為 true 的 `dev --skill`、`dev skill print` 與 `dev help` 直接印出內嵌
+值為 true 的 `dev --skill`、`dev agent skill print` 與 `dev help` 直接印出內嵌
 內容，不載入應用程式 config、不檢查 release、不刪除 Windows 升級遺留
 binary。錯誤的 arguments、flags 或 color 值仍會失敗；`--skill=false`
 維持一般啟動流程。本次不新增 CLI flags 或 JSON 欄位。
 
+## Graduate 介面（v0.3.1）
+
+`dev tries graduate [try]` 保留 `--name`、`--category`，新增 `--yes`／`-y`、
+`--remote-url`、`--forge auto|github|gitlab|none`、`--namespace`、
+`--visibility private|public|internal`；既有 `--remote`、`--private`、`--push`
+繼續支援。TTY 使用審閱 wizard，除非 `--yes` 或 `--dry-run` 選擇直接路徑；
+非 TTY 直接執行。Remote 保留規則、各模式預設與部分失敗見
+[Try 畢業](../guides/try-graduation.zh-TW.md)。Try JSON 新增可選
+`experiment.graduated_name`，既有 schema-1 欄位不變。
+
 ## 高價值 structured interfaces
 
 ```bash
-dev ls --json
+dev work list --json
 dev repo list --json
 dev repo context [repo] --json
 dev repo remote --json
@@ -77,9 +80,9 @@ dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
-dev note list [repo] --json
-dev note search <query> --json
-dev note show <note-id> --json
+dev repo note list [repo] --json
+dev repo note search <query> --json
+dev repo note show <note-id> --json
 dev ssh init --json
 dev ssh list --json
 dev ssh list --format tsv
@@ -87,21 +90,21 @@ dev ssh show <alias> --json
 dev ssh setup <alias> --dry-run --json
 dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
-dev skill list --all --json
-dev mcp list --all --json
+dev agent skill list --all --json
+dev agent mcp list --all --json
 dev pr list --json
-dev prompt list --json
-dev prompt render <pr-triage|session-close|workspace-closeout>
-dev sweep --ephemeral-worktrees --json
-dev hygiene report --json
-dev bootstrap --json
+dev agent prompt list --json
+dev agent prompt render <pr-triage|session-close|workspace-closeout>
+dev work sweep --ephemeral-worktrees --json
+dev git hygiene report --json
+dev repo bootstrap --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。`repo context --json` 是 additive schema-v1 report：unavailable facts 保持 null/error entries 並附 explicit provenance，不會變成 zero values。`fleet files --json` 是 content-free output，絕不包含 file hash 或 body。
 
-`dev skill list --json` 保留既有 array 與 keys，只新增 repository、checkout、installation、presence/integrity、registry 與 lock metadata。`dev mcp list --json` 從 `servers`/`diagnostics`/`coverage` envelope 起版；exact Claude local row 另有 `local_project_path`。每個 server field 都已 sanitized。Declaration state 可包含 Claude documented project approvals，但不得解讀為 health 或一般化的 effective merged config。
+`dev agent skill list --json` 保留既有 array 與 keys，只新增 repository、checkout、installation、presence/integrity、registry 與 lock metadata。`dev agent mcp list --json` 從 `servers`/`diagnostics`/`coverage` envelope 起版；exact Claude local row 另有 `local_project_path`。每個 server field 都已 sanitized。Declaration state 可包含 Claude documented project approvals，但不得解讀為 health 或一般化的 effective merged config。
 
-每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
+每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev repo note list --json` 與 `dev repo note search --json` 回傳完整 note records 的 arrays，`dev repo note show --json` 則回傳一筆完整 record。
 
 ## SSH host 與 fleet contracts
 
@@ -182,7 +185,7 @@ Request 的 optional `local` object 把 task intent 與 live checkout health 分
 
 ### Ephemeral-worktree report 與 apply contract
 
-`dev sweep --ephemeral-worktrees --json` 輸出一個 object，包含
+`dev work sweep --ephemeral-worktrees --json` 輸出一個 object，包含
 `schema_version: 1`、generation time、canonical repository/common-dir identity、
 provider inactivity threshold、explicit-base/branch-deletion request、sorted
 capabilities/diagnostics/candidates 與 summary counts。Candidate 只包含 validated
@@ -213,16 +216,16 @@ branch step 失敗，會回報 partial 並保留 branch。
 
 ### Prompt recipe 與 structured behavior
 
-`dev prompt list --json` 回傳 sorted recipe metadata（`name`、`summary`、`scope`、
+`dev agent prompt list --json` 回傳 sorted recipe metadata（`name`、`summary`、`scope`、
 optional `target_usage`、`context_version`）。三個 recipe 是 `pr-triage`、
 `session-close` 與 `workspace-closeout`。
 
-`dev prompt render <recipe>` 印出 Markdown prompt；其中 JSON envelope 含
+`dev agent prompt render <recipe>` 印出 Markdown prompt；其中 JSON envelope 含
 `schema_version: 1`、recipe/context versions、generation time、host、scope、optional
 target、capabilities、warnings 與 recipe context。Collection 是 read-only，missing
 evidence 保持明確。
 
-`dev prompt agents [--json]` 是 sorted、redacted profile inventory。Human output 有
+`dev agent prompt agents [--json]` 是 sorted、redacted profile inventory。Human output 有
 `PROFILE DEFAULT RUN OPEN DESCRIPTION`；direct launcher 只顯示 executable basename，
 shell launcher 顯示 `shell`，unavailable mode 顯示 `—`。每個 JSON object 都有
 `name`、`description`、`default` 與 nested `run`／`open` object；後者包含
@@ -231,13 +234,13 @@ argv、shell source、executable directories、environment、prompt text 或 con
 
 | Command | Process contract |
 |---|---|
-| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile 與其 run launcher；之後才啟動沒有 user stdin 的 batch process，prompt 可走 stdin/file/argv，default timeout 為 10 分鐘。 |
-| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile/open launcher，並先檢查 non-dry TTY；之後才啟動 file/argv transport、沒有 default timeout 的 foreground process。 |
+| `dev agent prompt run <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile 與其 run launcher；之後才啟動沒有 user stdin 的 batch process，prompt 可走 stdin/file/argv，default timeout 為 10 分鐘。 |
+| `dev agent prompt open <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile/open launcher，並先檢查 non-dry TTY；之後才啟動 file/argv transport、沒有 default timeout 的 foreground process。 |
 
 `--agent` 優先；否則選 unique configured default；再不然選 sole agent。多個 agent
 且沒有 default 時視為 ambiguous 並失敗。Selection 不是 mode-local：selected profile
 缺少 requested mode 時會失敗，不會改用另一個 profile。Diagnostic 會列出 sorted
-mode-capable profiles 並指向 `dev prompt agents`。Dynamic completion 會載入 parsed
+mode-capable profiles 並指向 `dev agent prompt agents`。Dynamic completion 會載入 parsed
 `--config`、依 run/open capability 過濾 names、透過 shared completion format sanitize
 description；invalid config 則得到 no candidates 與 no file completion。Dry-run 顯示
 resolved mode、cwd、transport、timeout、safe command marker 與完整 prompt，不啟動任何
@@ -391,8 +394,8 @@ upstream。
 `open` 開啟 configured Herdr/tmux/Zellij runtime，runtime 為 `none` 時退回 `cd`；
 `start` 會固定此 repository 並接續現有 task wizard。Setup 留下 uncommitted files、
 導致新 worktree 會遺漏它們時，`start` 不可用。Repository bootstrap 與
-預設的 `dev start` 都不會啟動 coding agent。明確使用 worktree mode 的
-`dev start --run '<shell command>'` 時，只有本次新建 first-class Herdr worktree
+預設的 `dev work start` 都不會啟動 coding agent。明確使用 worktree mode 的
+`dev work start --run '<shell command>'` 時，只有本次新建 first-class Herdr worktree
 回傳 exact root pane 才會 dispatch command；之後是否轉跳仍由 `--focus` 獨立控制。
 
 Repository、task-start 與 finish wizard 共用的 TTY text fields 都使用 inline editor：
@@ -400,15 +403,15 @@ Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C can
 被解讀為 terminal actions，不會成為 raw escape bytes。Buffered 或 piped non-TTY input
 仍維持 line-oriented behavior。
 
-## `dev flow [repo]` preview
+## `dev repo flow [repo]` preview
 
-`dev flow [repo]` 是獨立 full-screen command，只接受 interactive TTY；它沒有 JSON/non-interactive contract。省略 `repo` 時，canonical/linked checkout 會開啟同一 Git common-directory repository 並 focus exact current surface；Git 之外則非同步開 repository picker。明確 `repo` 會覆蓋 cwd。
+`dev repo flow [repo]` 是獨立 full-screen command，只接受 interactive TTY；它沒有 JSON/non-interactive contract。省略 `repo` 時，canonical/linked checkout 會開啟同一 Git common-directory repository 並 focus exact current surface；Git 之外則非同步開 repository picker。明確 `repo` 會覆蓋 cwd。
 
 Startup 與 `r` 只載入 local topology/evidence。`R` 才提供 Fetch refs、Refresh PR/MR 或 Both；每個 choice 都先產生 exact guarded plan，再要求 approval。Provider review observation 只在 current run 保存最低限度的 existence、`open`/`draft`/`merged`/`closed`、URL、provider 與 observed time，不代表 CI checks 或 approvals。`runtime=none` 保持 unobserved，也不提供 `--assume-no-runtime` 等 expert override。詳細 keys、row kinds、partial ledger 與 escape boundary 見 [Repository Flow 預覽](../guides/repository-flow.zh-TW.md)。
 
-## `dev done` finish flags
+## `dev work done` finish flags
 
-`dev done` 對 branch/worktree task 透過 `--ff`（rebase 到 base 再 fast-forward）、`--pr`（push 並開啟 pull/merge request）或 `--merged`（依 `--base-ref` 驗證外部 integration）處理。未指定 integration choice 時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](../guides/change-stream-workflow.zh-TW.md)。
+`dev work done` 對 branch/worktree task 透過 `--ff`（rebase 到 base 再 fast-forward）、`--pr`（push 並開啟 pull/merge request）或 `--merged`（依 `--base-ref` 驗證外部 integration）處理。未指定 integration choice 時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](../guides/change-stream-workflow.zh-TW.md)。
 
 Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`）：
 
@@ -419,9 +422,9 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 | `commit` | 用 `--message`/`-m` commit 全部變更（未指定時 interactive 會提示輸入） |
 | `discard` | reset tracked 變更並移除 untracked files；具破壞性，沒有 TTY 時需要 `--yes` |
 
-`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，保留 worktree 與 branch 給獨立的 `dev retire`，明確選定的 task pane 關閉則另行記錄；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
+`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，保留 worktree 與 branch 給獨立的 `dev work retire`，明確選定的 task pane 關閉則另行記錄；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev work retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
 
-Managed worktree 的 bare interactive `dev done` 在 MERGED 後會增加 cleanup
+Managed worktree 的 bare interactive `dev work done` 在 MERGED 後會增加 cleanup
 選擇：保留、retire 並保留 branch，或 retire 並刪除 contained branch。它會先
 preview covering runtime panes 與 agent 狀態；caller-owned Herdr workspace 交給
 fresh external coordinator。Explicit mode 與 non-interactive invocation 仍停在 DONE。
@@ -433,28 +436,28 @@ task-worktree pane 可在最後 Apply 核可後關閉。一般前景程序需要
 
 ## Retirement containment flags
 
-`dev retire [task-or-worktree] --base <ref>` 覆寫整合驗證目標，依序解析本機分支、
+`dev work retire [task-or-worktree] --base <ref>` 覆寫整合驗證目標，依序解析本機分支、
 remote-tracking ref（例如 `origin/main`）、commit。Apply 重新解析同一輸入；
 類型／ref／OID 改變即拒絕。未指定 override 時，task 記錄的 fork-point commit
-會保留；若不能證明整合，仍會阻擋並要求 `--base <branch>`。`dev sweep --base`
+會保留；若不能證明整合，仍會阻擋並要求 `--base <branch>`。`dev work sweep --base`
 也將 override 傳入 DONE task；`--merged-worktrees` 對 managed task 同樣使用
 已驗證的 base。移除無關 sibling 不再使已核准 sweep 批次的剩餘項目過期。
 
 `done --merged --base-ref X` 將 X 帶入 cleanup 提示、wizard 與外部 coordinator
-handoff（`dev retire --base X <task>`）。可選的 `--delete-branch`（sweep 使用
+handoff（`dev work retire --base X <task>`）。可選的 `--delete-branch`（sweep 使用
 `--delete-branches`）仍執行 `git branch -d`：Git 檢查 upstream／HEAD，不是
 `--base`，所以對非 HEAD base 清理可能在移除 worktree 後回報部分完成。
 
 ## Configuration
 
 ```bash
-dev config init
-dev config show
-dev config path
-dev config scaffolds init
-dev config scaffolds show
-dev config scaffolds path
-dev config scaffolds edit
+dev self config init
+dev self config show
+dev self config path
+dev self config scaffolds init
+dev self config scaffolds show
+dev self config scaffolds path
+dev self config scaffolds edit
 
 dev fleet config init      # user-authored primary remotes.toml
 dev fleet config show      # effective primary + generated remotes.d merge
@@ -499,7 +502,7 @@ Target 必須是 absolute 且尚不存在；dev 絕不 overwrite。Private、bou
 在 TUI teardown 後才寫入，只包含 relative categorical timings 與 aggregate row
 counts，不包含 names、paths 或 raw payloads；它不是 configuration、cache、durable
 stats、stdout 或 network telemetry。
-Dashboard 與 `dev flow` 這類 full-screen invocation 的 optional update-cache network refresh 也會延後到 initial view return 之後；這不會把 Flow 自己的 local `r` 變成 remote refresh。
+Dashboard 與 `dev repo flow` 這類 full-screen invocation 的 optional update-cache network refresh 也會延後到 initial view return 之後；這不會把 Flow 自己的 local `r` 變成 remote refresh。
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
@@ -671,14 +674,14 @@ host-owned policy。
 | Skill update | `current` | `update` | `missing`、`failed` |
 | Artifact intent | `finalized` | `armed`、`finalizing` | `failed` |
 
-`dev journal` 與 `dev summary` 輸出 Markdown，因此其 heading 與 fenced code block 的樣式與 `dev help <topic>` 的 quick-reference 頁面相同。在 command help 中只有你會實際輸入的名稱 —— command 名稱與 flag spec —— 會上色；description 保持原色，且 cobra 計算出的欄位對齊不受影響，因為 terminal 不會給 escape sequence 任何寬度。
+`dev activity journal` 與 `dev summary` 輸出 Markdown，因此其 heading 與 fenced code block 的樣式與 `dev help <topic>` 的 quick-reference 頁面相同。在 command help 中只有你會實際輸入的名稱 —— command 名稱與 flag spec —— 會上色；description 保持原色，且 cobra 計算出的欄位對齊不受影響，因為 terminal 不會給 escape sequence 任何寬度。
 
 用全域的 `--color <auto|always|never>` flag 控制（預設 `auto`）。`auto` 在 output 未連接 terminal、`NO_COLOR` 被設為任何非空值，或 `TERM=dumb` 時會停用 color。此設定同樣會傳到 interactive dashboard，因此 `dev --color never` 也會讓儀表板不上色。`--json` output 不論 mode 為何都不會上色。目前沒有對應的 config-file 欄位 —— `--color` 與 environment 是僅有的控制方式，因此 pipe `dev` 的輸出不需要額外傳 `--color never` 就是乾淨的。
 ## Shell integration
 
 ```bash
-eval "$(dev shell-init zsh)"
-dev shell-init fish | source
+eval "$(dev self shell-init zsh)"
+dev self shell-init fish | source
 ```
 
 Child process 不能改變 parent working directory，因此受信任的 `shell-init` output 會定義 wrapper。Navigation 與 post-MERGED retirement 執行時，wrapper 從 private child-only file descriptors 讀取 NUL-terminated path 與窄化的固定 retire action，先 `builtin cd` 再以 exact task ID 執行；它不會 evaluate 一般 `dev` output 或 arbitrary shell code。
@@ -692,10 +695,10 @@ Child process 不能改變 parent working directory，因此受信任的 `shell-
 ## 保持同步
 
 ```bash
-go run ./cmd/dev skill sync --check
+go run ./cmd/dev agent skill sync --check
 ```
 
-Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 generated block。
+Command help 改變時透過 `dev agent skill sync` regenerate；不要手動修改 generated block。
 
 ## 來源
 
@@ -719,18 +722,18 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 
 ## Agent 內容轉移
 
-使用 `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+使用 `dev agent skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
 預覽逐項 skill 連結。`--mode copy` 建立獨立內容，`--mode move` 先完成目的端再清理來源。
 以 `--from-repo`／`--to-repo` 選定 checkout，再用 `transfer apply --plan <id>` 套用。
 `transfer status` 顯示本機紀錄，`transfer undo <id>` 與 `transfer refresh <id>` 建立新的受保護計畫。
 私人復原內容位於設定的 state 目錄，不會出現在 JSON 報告。
 
-跨 repo 重用上游 skill 時，先以相同來源／目的地選項執行 `dev skill transfer prepare <name>`，
+跨 repo 重用上游 skill 時，先以相同來源／目的地選項執行 `dev agent skill transfer prepare <name>`，
 再執行 `transfer plan <name> --mode install --prepared <id>`。只有 prepare 可以下載。
 初始相容設定固定 `skills@1.5.23`，並在寫入 agent 檔案前驗證原生 lock 來源與暫存內容。
 版本、schema 或 hash 不符時會停止，不會默默升級或改為複製。
 
-`dev mcp transfer` 與 `dev instructions transfer` 共用相同的受保護流程。
+`dev agent mcp transfer` 與 `dev agent instructions transfer` 共用相同的受保護流程。
 MCP 另有明確的 `check`；三個 family 都能 `export` 選配 recipe，再為單一 `recipe`
 entry 建立 plan。原生 scope mapping、stanza 所有權、憑證 reference 與平台限制，
 請見[完整互通流程](../guides/agent-interop.zh-TW.md)。Skill JSON rows 與 MCP JSON
@@ -739,7 +742,7 @@ envelope 可新增 `interop`、`interop_coverage`；`receipts-only` 不代表原
 
 ## Dashboard 生命週期新增功能
 
-新增命令：`dev browse`／`dev repo browse [repo-or-path] --remote <name> --print`；`dev sweep --task <id>`；`dev tries delete <ref>`（alias `rm`）支援 `--dry-run`、`--json`、`--yes`、`--permanent`、`--confirm-delete <id>`、`--assume-no-runtime`；`dev tries restore <ref> --from <restored-path>`。[行為與確認規則](../guides/dashboard-actions.md)。
+新增命令：`dev repo browse`／`dev repo browse [repo-or-path] --remote <name> --print`；`dev work sweep --task <id>`；`dev tries delete <ref>`（alias `rm`）支援 `--dry-run`、`--json`、`--yes`、`--permanent`、`--confirm-delete <id>`、`--assume-no-runtime`；`dev tries restore <ref> --from <restored-path>`。[行為與確認規則](../guides/dashboard-actions.md)。
 
 ## 明確的 SSH 主機管理
 
@@ -762,10 +765,10 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 
 ### Skills maintenance and local presentation caches
 
-`dev skill manage [--repo <ref> | --all]` 是互動 wizard；不提供非互動套用捷徑。
+`dev agent skill manage [--repo <ref> | --all]` 是互動 wizard；不提供非互動套用捷徑。
 原有 `skill update <skill> --project|--global --yes` 保持相容。
 `skill list --json` 新增可選的 `update_checked_at`（RFC3339 時間）。
-`dev cache clear repos` 清除 repository 顯示快照；`dev cache clear skills`
+`dev self cache clear repos` 清除 repository 顯示快照；`dev self cache clear skills`
 清除附時間的來源比較 cache，`all` 包含兩者。`stats.db` 與 skills run receipts 不受影響。
 詳見 [Skills 管理](../guides/skills-management.zh-TW.md)。
 
@@ -815,7 +818,7 @@ fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashb
 
 ## Feedback 報告與修復來源
 
-`dev feedback draft` 保存本機報告；`issue <id>` 預覽公開內容，`--search` 查詢相關
+`dev self feedback draft` 保存本機報告；`issue <id>` 預覽公開內容，`--search` 查詢相關
 issue，`--publish --yes --revision <revision>` 表達對該確切內容／目標的既有授權。
 `repair <id> --base <ref>` 保存 guarded plan；`--apply --plan <id> --yes` 準備隔離
 checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
@@ -951,11 +954,11 @@ controller save flow。見 [SSH workflows](../guides/ssh-hosts.zh-TW.md#fleet-so
 
 ## Repository hygiene
 
-`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+`dev git hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。
 
-`dev hygiene report` 讀取此 checkout 最新保存的掃描，不重新掃描；
+`dev git hygiene report` 讀取此 checkout 最新保存的掃描，不重新掃描；
 `--scope staged|worktree|history` 選該範圍的最新掃描，`--report ID` 選確切報告。
 最新查詢以 checkout 為單位，不包含 snapshot。已保存的報告是歷史觀測；
 `checkout_current` 只比對根目錄，不比對來源 bytes。`--rescan` 要求新觀測
@@ -966,14 +969,14 @@ Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygi
 `--top N` 預設 10，`0` 顯示全部。`--disposition block,warn,accepted`、`--rule`、
 `--category secret,known,generic` 與可重複的 `--path <glob>` 在彙總前篩選；
 無效 glob 會被拒絕，回報的 filter 值依政策遮罩；
-`--findings` 加入逐筆 finding。Agent 應優先使用 `dev hygiene report --json`
+`--findings` 加入逐筆 finding。Agent 應優先使用 `dev git hygiene report --json`
 （`hygiene_summary` schema 1），不要解析 scan 輸出；詳見
 [摘要契約](compatibility.zh-TW.md#hygiene-summary-json-contract)。
 
 `--values` 加入遮罩後的相異值；除非 `--report` 指定已擷取值的掃描，否則隱含
 `--rescan`。原始值與所在行內容只留在權限為 0600 的私人
 `<report-id>.values.review.txt`，不進入 stdout、JSON 或掃描紀錄。
-`dev hygiene review-path <plan-or-report-id>` 只印出 plan 提案或原始值檢閱檔的位置，
+`dev git hygiene review-path <plan-or-report-id>` 只印出 plan 提案或原始值檢閱檔的位置，
 不輸出內容；勿將該檔貼到聊天、Git 或 CI。新增 `file_id` 區別確切檔案；舊資料
 的遮罩路徑計數會標示 `file_counts_complete: false`。`values_status` 回報
 complete／truncated／failed。數量／byte 上限會省略過大值並標記 `values_truncated`；
@@ -1027,7 +1030,7 @@ schema 1、kind `artifact_handoffs`；`handoffs` 每個 row 的已保存 Intent 
 
 ### 保存設定
 
-`dev artifact setup` 與 `dev repo setup --artifacts` 共用審閱 plan。
+`dev agent artifact setup` 與 `dev repo setup --artifacts` 共用審閱 plan。
 `.dev-cli/artifacts.toml` 保存 project ID、track/archive/unmanaged 模式、
 specstory/files 來源、capture 策略、literal 路徑與 export 規則。本機 archive／
 protection binding 與有簽章的 receipts 留在 `paths.state_dir/agent-history/`，

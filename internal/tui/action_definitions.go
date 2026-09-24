@@ -83,6 +83,16 @@ func newActionRegistry() []ActionSpec {
 	add(ViewRepos, listActionRepoMetadata, "edit repository metadata", "m", parent, func(c ActionContext) string {
 		return requires(c.model.actions.Repos.Patch != nil, "Repository metadata editing")
 	})
+	add(ViewRepos, listActionRepoDemote, "demote back to a Try…", "", parent, func(c ActionContext) string {
+		asset := c.repo.Repo.Asset
+		if asset == nil || asset.Kind != catalog.KindRepository || asset.Experiment == nil || asset.Experiment.Phase != catalog.PhaseGraduated {
+			return "Only a previously graduated Try can be demoted"
+		}
+		if asset.MoveIntent != nil {
+			return "Resolve the pending catalog move first"
+		}
+		return workflow(c)
+	})
 	add(ViewRepos, listActionStartWorktree, "start worktree task", "s", parent, func(c ActionContext) string {
 		return requires(c.model.actions.Workflow != nil || c.model.actions.Start != nil, "Worktree task creation")
 	})
@@ -121,9 +131,17 @@ func newActionRegistry() []ActionSpec {
 	add(ViewTries, listActionTryRestore, "restore from local archive", "", func(c ActionContext) bool {
 		return c.try.Item.Phase != catalog.PhaseGraduated && c.try.LocationState() == catalog.LocationArchived
 	}, tryApply)
-	add(ViewTries, listActionTryGraduate, "graduate into a project", "", func(c ActionContext) bool {
+	add(ViewTries, listActionTryGraduate, "graduate into a project…", "", func(c ActionContext) bool {
 		return c.try.Item.Phase != catalog.PhaseGraduated && (c.try.LocationState() == catalog.LocationPresent || c.try.LocationState() == catalog.LocationArchived)
-	}, tryApply)
+	}, func(c ActionContext) string {
+		if c.try.Item.Entry == nil || c.try.Item.ID == "" {
+			return "Reload the Try catalog before graduating"
+		}
+		if c.try.Item.Entry.MoveIntent != nil {
+			return "Resolve the pending catalog move first"
+		}
+		return workflow(c)
+	})
 	add(ViewTries, listActionOpen, "open Try", "enter o", func(c ActionContext) bool { return c.try.Present() }, tryApply)
 
 	add(ViewRemote, listActionRemoteContent, "Show snippets", "", nil, nil).Scope = actionView

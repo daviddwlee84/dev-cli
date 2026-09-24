@@ -34,7 +34,7 @@ A foreign alias remains usable for `list`, `show`, `probe`, key bootstrap, and f
 | `dev ssh probe <alias>` | `--json` | one fresh ordinary BatchMode login with sharing disabled |
 | `dev ssh remove <alias>` | `--fleet`, `--dry-run`, `--yes`, `--json` | remove only canonical dev-owned SSH/fleet fragments |
 
-`dev doctor` also reports local `ssh`/`ssh-keygen` and optional `tailscale` capabilities, static Include reachability, managed namespace permissions/ACLs, and generated fleet-fragment health. It does not run `ssh -G`, contact a host, or repair anything.
+`dev self doctor` also reports local `ssh`/`ssh-keygen` and optional `tailscale` capabilities, static Include reachability, managed namespace permissions/ACLs, and generated fleet-fragment health. It does not run `ssh -G`, contact a host, or repair anything.
 
 ## One-time initialization is report-before-apply
 
@@ -723,7 +723,7 @@ such; matching short names never authorizes a merge.
 Unlink retains suppression so discovery cannot silently reconnect the source.
 Merge keeps the survivor's label/preferred profile and retains the old ID as a
 redirect. Neither operation edits provider configuration or stops remote sessions.
-The private registry is durable; `dev cache clear ssh-discovery` and `cache clear all`
+The private registry is durable; `dev self cache clear ssh-discovery` and `cache clear all`
 remove only observations, never canonical identities or manual bindings.
 
 ## Key selection and optional registration
@@ -753,7 +753,7 @@ listing, and the setup key picker adds every provider whose socket is present.
 Dev finds sockets by `stat` only — Bitwarden (App Store, .dmg, Linux, Snap and
 Flatpak paths), 1Password and Secretive; an installed provider without a socket is
 reported with the step that enables its agent (Bitwarden: Settings → enable SSH
-agent), and `dev doctor` shows the same warning. An absent socket does not prove
+agent), and `dev self doctor` shows the same warning. An absent socket does not prove
 the agent is disabled; the app may be closed or using another path. Discovery of
 provider locations is passive; selecting/listing keys explicitly queries the SSH
 agent, not the provider's vault CLI. A setup dry-run does not write or connect to

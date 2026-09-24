@@ -51,7 +51,7 @@ Claude Code refuses symlinked `.claude`/worktree creation paths and verifies the
 
 Use `fresh` for independent work from the repository baseline. Use `head` when an isolated worker must build on commits from the current stream. Uncommitted changes never appear automatically in another worktree.
 
-For a specific existing branch or custom external location, create the worktree with Git or `dev wt create` rather than treating `baseRef` as an arbitrary ref selector.
+For a specific existing branch or custom external location, create the worktree with Git or `dev git worktree create` rather than treating `baseRef` as an arbitrary ref selector.
 
 ## Carry ignored files
 

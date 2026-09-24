@@ -55,7 +55,7 @@ Automation 應明確指出 base/commit。Detached worktree 適合 read-only revi
 使用 `dev` 時優先：
 
 ```bash
-dev wt create feat/auth --base main
+dev git worktree create feat/auth --base main
 ```
 
 它會先套用 placement 與 provisioning policy，再開啟 runtime。
@@ -90,7 +90,7 @@ git worktree prune
 
 `prune` 不能取代 `remove`；先 preview。Locked entry 會受到保護。
 
-`dev wt rm` 保留 branch 並拒絕 dirty worktree；`dev sweep` 能回報 stale recorded path。
+`dev git worktree rm` 保留 branch 並拒絕 dirty worktree；`dev work sweep` 能回報 stale recorded path。
 
 ## Move 與 repair
 

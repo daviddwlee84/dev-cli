@@ -51,7 +51,7 @@ Name the base/commit explicitly for automation. A detached worktree is useful fo
 With `dev`, prefer:
 
 ```bash
-dev wt create feat/auth --base main
+dev git worktree create feat/auth --base main
 ```
 
 This applies placement and provisioning policy before opening the runtime.
@@ -86,7 +86,7 @@ git worktree prune
 
 `prune` is not a replacement for `remove`; preview first. Locked entries are protected.
 
-`dev wt rm` preserves the branch and includes dirty-worktree refusal; `dev sweep` can report stale recorded paths.
+`dev git worktree rm` preserves the branch and includes dirty-worktree refusal; `dev work sweep` can report stale recorded paths.
 
 ## Move and repair
 

@@ -221,6 +221,7 @@ type ListOptions struct {
 // ResolveOrCreate use the zero value, so an archived, deprecated, evicted, or
 // graduated record can never be opened or revived implicitly.
 type ResolveOptions struct {
+	ReadOnly          bool
 	IncludeDeprecated bool
 	IncludeArchived   bool
 	IncludeEvicted    bool
@@ -234,6 +235,7 @@ const (
 	TransitionArchive  TransitionOperation = "archive"
 	TransitionRestore  TransitionOperation = "restore"
 	TransitionGraduate TransitionOperation = "graduate"
+	TransitionDemote   TransitionOperation = "demote"
 )
 
 // TransitionRequest selects a Try and optionally supplies a restore target.
@@ -254,6 +256,8 @@ type TransitionPlan struct {
 	Diagnostics []Diagnostic
 
 	LinkedWorktree bool
+	demote         *DemotePlan
+	graduate       *graduateMoveAuthority
 }
 
 // TransitionResult reports both the move and its durable catalog outcome.
@@ -318,24 +322,36 @@ type GraduateRequest struct {
 	Name       string
 	CurrentDir string
 	DryRun     bool
+	Expected   *catalog.Entry
 }
 
-// GraduatePlan can be rendered before an apply. Planning may reconcile legacy
-// catalog metadata, but never changes the source or destination trees. Apply
-// plans again so a destination created after preview cannot be overwritten.
+// GraduatePlan seals the exact reviewed source, catalog, contents, Git state and
+// destination. Planning does not enroll legacy folders or change catalog/source
+// contents. ApplyGraduate validates the returned plan unchanged.
 type GraduatePlan struct {
 	Item Item
 
-	Source      string
-	Destination string
-	Category    string
-	Name        string
+	Source       string
+	Destination  string
+	Category     string
+	Name         string
+	GitCommonDir string
+	Register     bool
 
-	NeedsGitInit       bool
-	NeedsInitialCommit bool
-	LinkedWorktree     bool
-	DryRun             bool
-	Diagnostics        []Diagnostic
+	NeedsGitInit                                    bool
+	NeedsInitialCommit                              bool
+	LinkedWorktree                                  bool
+	DryRun                                          bool
+	Diagnostics                                     []Diagnostic
+	entry                                           *catalog.Entry
+	host, triesRoot, projectRoot                    string
+	identity, gitIdentity, gitDirIdentity, gitState string
+	gitConfig, gitOtherRefs, gitHeadRef             string
+	gitCheckoutHead, gitCheckoutBranch              string
+	gitDetached                                     bool
+	tree, products, parent, parentIdentity          string
+	seedREADME                                      bool
+	seal                                            string
 }
 
 // GraduateResult reports local work only. Remote creation and push remain an
@@ -350,6 +366,19 @@ type GraduateResult struct {
 	RolledBack        bool
 	RollbackError     error
 	Diagnostics       []Diagnostic
+	Registered        bool
+	Publication       *GraduatePublication
+	PublicationError  error
+}
+
+// GraduatePublication is captured before the local graduation leases are
+// released. Native identities use gitx.DirectoryIdentity for caller rechecks.
+type GraduatePublication struct {
+	Checkout, CheckoutIdentity      string
+	GitCommonDir, GitCommonIdentity string
+	GitDir, GitDirIdentity          string
+	Branch, Head                    string
+	Detached                        bool
 }
 
 // GitRunFunc and the other hook types are narrow seams used to make destructive
@@ -369,6 +398,8 @@ type CatalogUpdateFunc func(string, func(*catalog.Entry) error) (*catalog.Entry,
 // implementations. It is intentionally small and operation-shaped rather than
 // exposing the Service's internals.
 type Hooks struct {
+	DemoteGuard    func(context.Context, DemoteGuardRequest) (string, error)
+	DemoteLock     func(context.Context, string, func() error) error
 	ForgetGuard    func(context.Context, *catalog.Entry) (string, error)
 	RemovalGuard   func(context.Context, string) (string, error)
 	Trash          func(context.Context, string) error
@@ -407,6 +438,8 @@ type ServiceConfig struct {
 // Service owns all Try policy while delegating persistence and Git porcelain to
 // their focused packages.
 type Service struct {
+	demoteGuard    func(context.Context, DemoteGuardRequest) (string, error)
+	demoteLock     func(context.Context, string, func() error) error
 	forgetGuard    func(context.Context, *catalog.Entry) (string, error)
 	removalGuard   func(context.Context, string) (string, error)
 	trash          func(context.Context, string) error
@@ -494,6 +527,8 @@ func NewService(config ServiceConfig) (*Service, error) {
 }
 
 func applyHooks(service *Service, hooks Hooks) {
+	service.demoteGuard = hooks.DemoteGuard
+	service.demoteLock = hooks.DemoteLock
 	service.forgetGuard = hooks.ForgetGuard
 	service.removalGuard = hooks.RemovalGuard
 	if hooks.Trash != nil {

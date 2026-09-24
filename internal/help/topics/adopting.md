@@ -10,7 +10,7 @@ already have. Whatever your projects tree looks like — `~/Documents/Program`,
 `~/src`, `~/code`, a ghq root, several of them — it keeps working as is.
 
 ```bash
-dev config init     # detects this machine's roots and writes a config
+dev self config init     # detects this machine's roots and writes a config
 dev repo list       # confirm it found what you expected
 ```
 
@@ -21,12 +21,12 @@ file is ordinary TOML — edit `scan_roots`, or add an exact checkout such as
 
 ## Importing work already in flight
 
-Repositories are discovered; *tasks* are not. `dev adopt` finds the work that
+Repositories are discovered; *tasks* are not. `dev work adopt` finds the work that
 is already happening and offers to record it:
 
 ```bash
-dev adopt                   # report only
-dev adopt --apply           # record, confirming each one
+dev work adopt                   # report only
+dev work adopt --apply           # record, confirming each one
 ```
 
 It looks for three things:
@@ -41,7 +41,7 @@ turn-scoped worktrees an agent harness creates and cleans up itself.
 
 Nothing on disk changes either way. Adopting only writes task entries.
 
-For one exact linked checkout, `dev flow [repo]` offers the same metadata-only
+For one exact linked checkout, `dev repo flow [repo]` offers the same metadata-only
 boundary without applying the command-wide candidate report. Select an
 `unmanaged` row, choose **Adopt**, inspect the plan, then approve it. The plan
 revalidates Git/worktree/task/base/runtime/agent identity and refuses canonical,
@@ -54,7 +54,7 @@ Afterwards, give the ones you care about a next action — that is what makes
 parking them cheap later:
 
 ```bash
-dev park <task> --next "…"
+dev work park <task> --next "…"
 ```
 
 ## Worktrees you already have elsewhere
@@ -82,7 +82,7 @@ worktree_root = "/mnt/work/worktrees"
 worktree_path = "{{worktree_root}}/{{repo|lower}}/{{branch|slug}}"
 ```
 
-`project_root` is only used by `dev repo new|clone` and `dev graduate` to
+`project_root` is only used by `dev repo new|clone` and `dev tries graduate` to
 decide where a *new* project goes. Existing ones are found through
 `scan_roots` regardless.
 

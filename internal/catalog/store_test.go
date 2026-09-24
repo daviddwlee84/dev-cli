@@ -441,6 +441,20 @@ func TestValidateRejectsIncompleteNestedMetadata(t *testing.T) {
 		t.Errorf("move intent without operation should fail, got %v", err)
 	}
 
+	demote := base
+	demote.MoveIntent = &catalog.MoveIntent{
+		Host: "laptop", Operation: "demote", SourcePath: "/repo", DestinationPath: "/tries/repo", Started: now,
+	}
+	if err := demote.Validate(); err == nil || !strings.Contains(err.Error(), "identities") {
+		t.Errorf("demote intent without physical identities should fail, got %v", err)
+	}
+	demote.MoveIntent.SourceIdentity = "filesystem:source"
+	demote.MoveIntent.GitCommonIdentity = "filesystem:git"
+	demote.MoveIntent.GitDirIdentity = "filesystem:git-dir"
+	if err := demote.Validate(); err != nil {
+		t.Errorf("bound demote intent should be valid: %v", err)
+	}
+
 	equivalentPaths := base
 	equivalentPaths.MoveIntent = &catalog.MoveIntent{
 		Host: "laptop", Operation: "archive", SourcePath: "/repo", DestinationPath: "/repo/.", Started: now,

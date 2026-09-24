@@ -39,14 +39,14 @@ A worktree is not a coordination system. It prevents working-directory collision
 ## The default dev-cli loop
 
 ```bash
-dev start api --task "refresh tokens" --base main
-dev park --next "add expiry regression test" --wip
-dev resume "refresh tokens"
-dev done --ff
-dev sweep
+dev work start api --task "refresh tokens" --base main
+dev work park --next "add expiry regression test" --wip
+dev work resume "refresh tokens"
+dev work done --ff
+dev work sweep
 ```
 
-Use `dev done --pr` instead of `--ff` when review or CI owns integration. Opening the request does not mark the task DONE.
+Use `dev work done --pr` instead of `--ff` when review or CI owns integration. Opening the request does not mark the task DONE.
 
 ## The default GitHub Flow loop
 

@@ -125,6 +125,7 @@ type Experiment struct {
 	DeprecatedPath string    `toml:"deprecated_path" json:"deprecated_path"`
 	GraduatedAt    time.Time `toml:"graduated_at" json:"graduated_at"`
 	GraduatedPath  string    `toml:"graduated_path" json:"graduated_path"`
+	GraduatedName  string    `toml:"graduated_name,omitempty" json:"graduated_name,omitempty"`
 }
 
 // Location is one host's knowledge of an asset. CurrentPath is where bytes live
@@ -170,6 +171,12 @@ type MoveIntent struct {
 	SourcePath      string    `toml:"source_path" json:"source_path"`
 	DestinationPath string    `toml:"destination_path" json:"destination_path"`
 	Started         time.Time `toml:"started" json:"started"`
+	// Demotion retains physical identity across a move interrupted before
+	// catalog finalization. Older operations leave these fields empty.
+	SourceIdentity    string `toml:"source_identity,omitempty" json:"source_identity,omitempty"`
+	GitCommonIdentity string `toml:"git_common_identity,omitempty" json:"git_common_identity,omitempty"`
+	GitDirIdentity    string `toml:"git_dir_identity,omitempty" json:"git_dir_identity,omitempty"`
+	LinkedWorktree    bool   `toml:"linked_worktree,omitempty" json:"linked_worktree,omitempty"`
 }
 
 // Entry is one logical asset. ID is the stable filename stem and is deliberately
@@ -348,6 +355,14 @@ func (e Entry) Validate() error {
 		if e.Experiment.OriginalPath == "" {
 			return fmt.Errorf("catalog asset %s: experiment original path is required", e.ID)
 		}
+		if name := e.Experiment.GraduatedName; name != "" {
+			if err := pathx.ValidateComponent(name); err != nil || name != strings.TrimSpace(name) {
+				return fmt.Errorf("catalog asset %s: graduated name must be a safe normalized component", e.ID)
+			}
+			if e.Experiment.GraduatedAt.IsZero() || e.Experiment.GraduatedPath == "" {
+				return fmt.Errorf("catalog asset %s: graduated name requires graduation timestamp and path", e.ID)
+			}
+		}
 		switch e.Experiment.Phase {
 		case PhaseDeprecated:
 			if e.Experiment.DeprecatedAt.IsZero() || e.Experiment.DeprecatedPath == "" {
@@ -367,6 +382,7 @@ func (e Entry) Validate() error {
 			{"original_path", e.Experiment.OriginalPath},
 			{"deprecated_path", e.Experiment.DeprecatedPath},
 			{"graduated_path", e.Experiment.GraduatedPath},
+			{"graduated_name", e.Experiment.GraduatedName},
 		}); err != nil {
 			return fmt.Errorf("catalog asset %s: %w", e.ID, err)
 		}
@@ -474,6 +490,9 @@ func validateRecoveryReceipt(receipt RecoveryReceipt) error {
 }
 
 func validateMoveIntent(intent MoveIntent) error {
+	if intent.Operation == "demote" && (intent.SourceIdentity == "" || intent.GitCommonIdentity == "" || intent.GitDirIdentity == "") {
+		return errors.New("demote move intent requires source and Git common-directory identities")
+	}
 	if err := validateHostValue("move intent host", intent.Host); err != nil {
 		return err
 	}
@@ -493,6 +512,9 @@ func validateMoveIntent(intent MoveIntent) error {
 		{"operation", intent.Operation},
 		{"source_path", intent.SourcePath},
 		{"destination_path", intent.DestinationPath},
+		{"source_identity", intent.SourceIdentity},
+		{"git_common_identity", intent.GitCommonIdentity},
+		{"git_dir_identity", intent.GitDirIdentity},
 	}); err != nil {
 		return err
 	}

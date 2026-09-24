@@ -104,6 +104,55 @@ fi
 	}
 }
 
+func TestPosixShellWrapperCanonicalNavigation(t *testing.T) {
+	fake, tmp, target := writeFakeDev(t)
+	for _, shell := range []string{"bash", "zsh"} {
+		path, err := exec.LookPath(shell)
+		if err != nil {
+			t.Logf("%s is not installed", shell)
+			continue
+		}
+		t.Run(shell, func(t *testing.T) {
+			wrapper := fmt.Sprintf(posixInit, shellQuote(fake), shell)
+			script := wrapper + `
+set -e
+dev git worktree open
+printf 'git=%s\n' "$PWD"
+builtin cd "$TMPDIR"
+dev work resume task-id
+printf 'work=%s\n' "$PWD"
+builtin cd "$TMPDIR"
+dev tries try experiment
+printf 'tries=%s\n' "$PWD"
+builtin cd "$TMPDIR"
+dev agent prompt open session-close
+printf 'agent=%s\n' "$PWD"
+builtin cd "$TMPDIR"
+dev self feedback repair report-id
+printf 'self=%s\n' "$PWD"
+builtin cd "$TMPDIR"
+dev work done
+printf 'done=%s\n' "$PWD"
+`
+			cmd := exec.Command(path)
+			cmd.Stdin = strings.NewReader(script)
+			cmd.Env = append(os.Environ(), "TMPDIR="+tmp, "DEV_TEST_TARGET="+target)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("canonical navigation: %v\n%s", err, out)
+			}
+			for _, prefix := range []string{"git=", "work=", "tries=", "agent=", "self=", "done="} {
+				if !strings.Contains(string(out), prefix+target+"\n") {
+					t.Errorf("missing %s navigation: %s", prefix, out)
+				}
+			}
+			if !strings.Contains(string(out), "retired canonical-task at "+target+"\n") {
+				t.Errorf("canonical done lost the retirement side channel: %s", out)
+			}
+		})
+	}
+}
+
 func TestPosixShellWrapperFallsBackFromStaleTMPDIR(t *testing.T) {
 	fake, _, target := writeFakeDev(t)
 	for _, shell := range []string{"bash", "zsh"} {
@@ -200,6 +249,12 @@ func writeFakeDev(t *testing.T) (path, tmp, target string) {
 	path = filepath.Join(root, "fake dev")
 	body := `#!/bin/sh
 case "${1:-}" in
+  git|work|tries|agent|self)
+    printf '%s\0' "$DEV_TEST_TARGET" >&3
+    if [ "$1 $2" = "work done" ]; then
+      printf 'retire\0canonical-task\0false\0false\0' >&4
+    fi
+    ;;
   stream)
     printf 'streamed stdout\n'
     printf 'streamed stderr\n' >&2

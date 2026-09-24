@@ -16,9 +16,10 @@ import (
 func newGitCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "git",
-		Short: "Guarded Git transactions that need receipts or recovery",
-		Long: `Wrap only multi-step Git operations whose failure recovery is easy to get
-wrong. Simple aliases such as git status or git add remain shell/plugin concerns.`,
+		Short: "Manage Git worktrees, submodules, ignore rules and guarded transactions",
+		Long: `Manage Git checkout resources, repository privacy and ignore rules, and
+multi-step transactions with recovery. Simple aliases such as git status or git
+add remain shell/plugin concerns.`,
 	}
 	cmd.AddCommand(
 		newGitUncommitCmd(app), newGitRecommitCmd(app), newGitPullRebaseCmd(app),

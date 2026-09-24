@@ -1,8 +1,8 @@
 ---
-description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
+description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev repo flow 檢查 guarded lifecycle。
 authority: project
 status: evolving
-verified_on: 2026-09-20
+verified_on: 2026-09-24
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
@@ -14,7 +14,7 @@ lang: zh-TW
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
 
-`dev flow [repo]` 是另一個獨立、僅限 TTY 且標示為 preview 的全螢幕介面，不是 dashboard 的 tab 或 view。它聚焦單一 canonical repository 的所有 registered worktrees 與 task-only rows，並把 lifecycle intent、live evidence 與 plan-first actions 並列；完整說明見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
+`dev repo flow [repo]` 是另一個獨立、僅限 TTY 且標示為 preview 的全螢幕介面，不是 dashboard 的 tab 或 view。它聚焦單一 canonical repository 的所有 registered worktrees 與 task-only rows，並把 lifecycle intent、live evidence 與 plan-first actions 並列；完整說明見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
 
 ## 八個 view
 
@@ -158,7 +158,7 @@ n/N       quick-add／瀏覽 repository notes
 ctrl+o    task state filters
 ```
 
-COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。Terminal 寬度至少 97 cells 時，TASKS table 會顯示 display-width-aware `REPO` column；更窄時保留原 columns，並在 detail 顯示 repo/path。
+COLD worktree task 必須透過 `dev work resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev work sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。Terminal 寬度至少 97 cells 時，TASKS table 會顯示 display-width-aware `REPO` column；更窄時保留原 columns，並在 detail 顯示 repo/path。
 
 ### REPOS
 
@@ -195,7 +195,7 @@ components，自動合併 gitignore。Python 的 `python-project-best-practice` 
 ### 獨立 Repository Flow
 
 ```text
-dev flow [repo]         依 cwd 或明確 repo 開啟 canonical repository
+dev repo flow [repo]         依 cwd 或明確 repo 開啟 canonical repository
 j/k 或 Up/Down          選 surface row
 h/l 或 Left/Right       選 action
 Enter                   只建立 plan
@@ -238,7 +238,7 @@ dev repo remote --refresh
 dev repo clone
 ```
 
-在 checkout 外，bare `dev start` 使用相同 picker UI 選 fast live local discovery
+在 checkout 外，bare `dev work start` 使用相同 picker UI 選 fast live local discovery
 的結果，之後才 full resolve 選定 repository 並規劃 task。在 repository 內則保留
 immediate current-repository default，不掃描所有 configured roots。Default external selector 是 `fzf`；
 executable 缺少時 fallback 到 built-in Bubble Tea list，`[picker] command = []` 會
@@ -295,14 +295,14 @@ Esc       不改資料並返回
 不使用 TUI 也能操作同一份 source of truth：
 
 ```bash
-dev note add "try event subscription" --repo api --tag idea
-dev note list api
-dev note search "event subscription" --repo api
-dev note show <id-or-prefix>
-dev note edit <id-or-prefix>
-dev note delete <id-or-prefix>       # 會確認
-dev note path api
-dev note reindex
+dev repo note add "try event subscription" --repo api --tag idea
+dev repo note list api
+dev repo note search "event subscription" --repo api
+dev repo note show <id-or-prefix>
+dev repo note edit <id-or-prefix>
+dev repo note delete <id-or-prefix>       # 會確認
+dev repo note path api
+dev repo note reindex
 ```
 
 Note ID prefix 必須唯一，且至少八個字元。
@@ -364,15 +364,15 @@ run = "lazygit"
 
 Key 區分大小寫，且不能覆蓋 globally owned dashboard binding。為相容既有設定，`A` 仍可配置，但在 SKILLS/MCP view 會優先執行 scope toggle。離開 editor 後可 reload 多數 config；更換 runtime backend 需要重啟 TUI。
 
-Configured tool 是刻意保留的 escape hatch：它在選取 checkout 執行任意 configured command，不會自動繼承 `dev flow` 的 PlanID、conditions、agent occupancy 或 revalidation guards。Raw Git／forge command 也是同樣邊界；operator 必須自行確認其 safety。
+Configured tool 是刻意保留的 escape hatch：它在選取 checkout 執行任意 configured command，不會自動繼承 `dev repo flow` 的 PlanID、conditions、agent occupancy 或 revalidation guards。Raw Git／forge command 也是同樣邊界；operator 必須自行確認其 safety。
 
 ## Inventory 現有機器
 
 先產生 report：
 
 ```bash
-dev bootstrap ~/code /mnt/work
-dev bootstrap ~/code --json
+dev repo bootstrap ~/code /mnt/work
+dev repo bootstrap ~/code --json
 ```
 
 Scanner 會辨識 canonical checkout、linked worktree、bare repository 與 symlink alias，再依 Git identity 去重。
@@ -380,8 +380,8 @@ Scanner 會辨識 canonical checkout、linked worktree、bare repository 與 sym
 建議的 organization layer 是 non-destructive symlink index：
 
 ```bash
-dev bootstrap ~/code --index ~/Projects --layout flat
-dev bootstrap ~/code --index ~/Projects --layout flat --apply
+dev repo bootstrap ~/code --index ~/Projects --layout flat
+dev repo bootstrap ~/code --index ~/Projects --layout flat --apply
 ```
 
 Physical move 是另一個更嚴格的 mode。Move plan 會阻擋 dirty repository、linked worktree、live session/current working directory、會損壞的 alias、occupied destination 與 cross-filesystem rename；任一 row blocked 時，apply 不會移動任何 repository。
@@ -391,8 +391,8 @@ Physical move 是另一個更嚴格的 mode。Move plan 會阻擋 dirty reposito
 Bootstrap 回答 **repository 在哪裡**；adoption 回答 **哪些既有 branch、worktree 與 session 正在工作**：
 
 ```bash
-dev adopt
-dev adopt --apply
+dev work adopt
+dev work adopt --apply
 ```
 
 Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不會移動、改名或刪除 checkout，也會排除已辨識的 harness-ephemeral worktree。
@@ -431,7 +431,7 @@ REPOS 先讀取附時間的顯示 cache，再逐批加入 discovery 與 Git obse
 Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供依賴該列
 之操作的授權。New-repo wizard 是獨立入口，仍保留最終 mutation checks。
 完整 discovery 才移除消失項目，失敗保留 stale／unknown。`r` 保持本地 refresh；
-`dev cache clear repos` 可清除快照，SIZE 沿用其獨立 cache。
+`dev self cache clear repos` 可清除快照，SIZE 沿用其獨立 cache。
 
 Ctrl+O 選單與子選單支援 `/` 篩選、方向鍵及 Enter；Esc 先清除搜尋，再關閉。
 `H` 先顯示 stats，再自動補齊所選 repo 的完整本地 Git 歷史，refs 未變時使用
@@ -537,7 +537,7 @@ Fleet 保留非同步本機 catalog adapter 與精確的 host／profile 身分�
 ## Dashboard 版本與更新提示
 
 Dashboard footer 固定顯示目前執行版本；已知有較新的穩定版本時，另顯示版本號與
-`dev upgrade`，更新仍由使用者明確執行。先讀取現有 24 小時 release 快取，首個畫面
+`dev self upgrade`，更新仍由使用者明確執行。先讀取現有 24 小時 release 快取，首個畫面
 完成後才背景檢查。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK=1` 會關閉
 檢查與新版提示，但保留目前版本。舊觀測標示 cached，檢查失敗不打斷其他操作。
 開發版／dirty 版本字串會保留；無法比較的版本不會被宣稱為最新版。適用於裸 `dev`
@@ -575,3 +575,32 @@ browser 也使用此流程。最終 preflight 仍重新檢查；非互動請求�
 `repo new` 與 `repo setup` 會區分真正的 validation／provider 錯誤和取消，以非零
 狀態回傳原始錯誤。本地 repository 的 `stage` 搭配 `open` 是合法選項；缺少
 installer 時可拒絕或明確略過 optional skill，保留其餘建立設定。
+
+## 讓 Try 畢業
+
+TRY → Ctrl+O → graduate 開啟與 `dev tries graduate` 相同的 wizard：選擇
+名稱／category，以及本機（預設）、加入 URL 或建立 remote，審閱後確認。
+既有 remotes 保留。取消不套用 graduation 或 publication；遠端失敗時分別
+回報保留的本機成功結果與錯誤，不自動重試或回滾。Flags、預設值與記住的名稱
+見 [Try 畢業](try-graduation.zh-TW.md)。
+
+## 將已畢業的 repository 退回 Try
+
+在 REPOS → Ctrl+O → demote，可把曾 graduate 的 Try 退回實驗區。
+此 action 先顯示與 `dev tries demote` 相同的受保護搬移計畫，確認來源與目的地
+後才套用。沒有 graduation history 的一般 repository 不適用。
+
+```bash
+dev tries demote <repo-or-path-or-catalog-id> --dry-run
+dev tries demote <repo-or-path-or-catalog-id>
+dev tries demote <catalog-id> --to ~/src/tries/2026-09-24-parser
+```
+
+預設回到記錄中的原 Try 路徑。若目的地被占用或已不在目前 `tries_root` 內，
+必須用 `--to` 明確指定安全位置。Demote 保留目前所有 bytes，包括 dirty／
+untracked／ignored 檔案、Git history／remotes、catalog ID、tags、notes 與
+畢業紀錄；Try 變為 active、present。不撤銷 commit 或 publication，也不建立
+symlink。Task、runtime／agent、artifact claims，帶有 linked worktrees 的
+canonical repository，不完整觀察或過期計畫，都會阻擋搬移。原有同檔案系統、
+identity、rollback 與 reconciliation 保護仍適用。見
+[命令遷移與 Try 轉換](../reference/cli-v0.3.zh-TW.md)。

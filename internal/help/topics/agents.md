@@ -22,7 +22,7 @@ one independent change stream
 | Intent | Action |
 |---|---|
 | Observe existing work | `herdr agent get/read/wait`; do not send probe keys or focus it |
-| Spawn independent work | `dev start <repo> --task <name> --base <committed-ref> --json`, validate the exact new pane, then launch there |
+| Spawn independent work | `dev work start <repo> --task <name> --base <committed-ref> --json`, validate the exact new pane, then launch there |
 | Handoff the same task | Settle the old session, checkpoint dirty code, get explicit user agreement, then resume with a new forked session ID |
 
 A new independent task does not need to wait for an unrelated agent. It does
@@ -70,7 +70,7 @@ from the target worktree root instead.
 
 ## Launching a background agent
 
-`dev start` creates the task/worktree/runtime target; it does not start an
+`dev work start` creates the task/worktree/runtime target; it does not start an
 agent. The bundled `dev-cli` skill owns the fail-closed cross-tool workflow and
 supports standard Claude/Codex plus the local one-shot Copilot launchers.
 
@@ -79,8 +79,8 @@ For a parallel launch, read its `references/parallel-agents.md`; for prompt
 transport, also read `references/prompt-handoffs.md`. Ordinary command syntax
 comes from `dev <command> --help`, and workflow orientation from `dev help`.
 Load only the matching advanced reference instead of preloading the bundle or
-printing `dev --skill` again for each operation. `dev --skill`, `dev skill print`
-and installed `SKILL.md` are the same entry; `dev skill install` also writes the
+printing `dev --skill` again for each operation. `dev --skill`, `dev agent skill print`
+and installed `SKILL.md` are the same entry; `dev agent skill install` also writes the
 reference files.
 
 Do not infer a pane from focus or sidebar order. Missing, reused, fallback,
@@ -91,12 +91,12 @@ non-Herdr, or unverified panes are not launch targets.
 Herdr `done` means a turn settled; it does not mean history is synced, review is
 complete, code is committed, or the workspace may close.
 
-- `dev park` records WARM and keeps the checkout; a contained caller runtime stays alive.
-- `dev park --cold --push` closes externally and removes a reconstructible checkout.
-- `dev done --ff` integrates and records DONE; runtime/worktree/branch remain.
-- `dev done --pr` leaves the task and checkout for review.
-- `dev flow [repo]` can plan DONE retirement, but Apply still requires an external safe caller.
-- `dev retire` closes/waits/removes/reaps; `dev sweep` reports first.
+- `dev work park` records WARM and keeps the checkout; a contained caller runtime stays alive.
+- `dev work park --cold --push` closes externally and removes a reconstructible checkout.
+- `dev work done --ff` integrates and records DONE; runtime/worktree/branch remain.
+- `dev work done --pr` leaves the task and checkout for review.
+- `dev repo flow [repo]` can plan DONE retirement, but Apply still requires an external safe caller.
+- `dev work retire` closes/waits/removes/reaps; `dev work sweep` reports first.
 
 `--cold --keep-session` is rejected because a live session must not point at a
 removed checkout.

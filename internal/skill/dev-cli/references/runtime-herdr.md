@@ -1,7 +1,7 @@
 # dev and Herdr
 
 Read this on a Herdr machine, when task state should appear in the sidebar, or
-when a `dev start --json` result will be used to launch an agent.
+when a `dev work start --json` result will be used to launch an agent.
 
 ## Division of responsibility
 
@@ -36,8 +36,8 @@ used only after exact current-backend validation. Root-pane data stays transient
 the canonical parent checkout from Git and passes it with `--cwd`, so grouping
 does not depend on whichever Herdr pane invoked `dev`. First-class `worktree
 open` gives the child native repository/worktree grouping plus branch/ahead-
-behind data. Worktree-mode `dev start` uses the same `repo/branch`
-label as `dev wt create`; no special origin labels or metadata are needed.
+behind data. Worktree-mode `dev work start` uses the same `repo/branch`
+label as `dev git worktree create`; no special origin labels or metadata are needed.
 
 A plain-workspace fallback reports `surface=workspace` honestly. A root pane is
 automatically launchable only when the same successful `worktree open` response
@@ -45,7 +45,7 @@ proves a newly created layout. Reuse, fallback, missing/malformed responses,
 Tmux, and the `none` runtime never supply a launchable pane. `--no-focus`
 preserves the caller's context; never substitute the focused/current pane.
 
-`dev start --run '<shell command>'` consumes that proof directly, dispatches
+`dev work start --run '<shell command>'` consumes that proof directly, dispatches
 opaque shell text without persisting or echoing it, and returns after Herdr
 accepts the command. It does not wait for completion or report the command's
 exit status. `--focus` remains independent and runs only after successful
@@ -67,12 +67,12 @@ Pure local repo/worktree open and TUI Enter reuse the live owner's workspace and
 do not claim a second writer. By default, inside Herdr they request runtime focus;
 outside Herdr the TUI first restores the terminal and then attaches, matching
 `hhere`. For visibility only, use
-`dev wt open <branch> --repo <repo> --runtime herdr --no-focus`: it opens/reuses the
+`dev git worktree open <branch> --repo <repo> --runtime herdr --no-focus`: it opens/reuses the
 existing registered checkout, reports branch/path/backend/handle and the actual
 runtime surface, and returns without focus or attachment. It never creates a Git
 worktree, provisions, adopts/annotates a task, or launches an agent. Reuse and
 workspace fallback stay non-launchable; runtime failures remain errors. Prefer
-`dev start <repo> --task '<task>' --base '<committed-ref>'` for new managed work,
+`dev work start <repo> --task '<task>' --base '<committed-ref>'` for new managed work,
 and report its checkout and runtime result immediately.
 
 The root `--allow-shared-checkout` escape hatch is
@@ -114,12 +114,12 @@ Herdr agent `done` means the latest turn settled. It does not establish that
 history is synced, review is complete, code is committed, or cleanup is safe.
 Never auto-close based on agent state.
 
-- `dev park` records WARM; inside its own workspace it leaves runtime alive for normal agent exit.
-- `dev park --cold --push` closes/removes only from an external safe caller.
-- `dev done --ff` integrates and keeps worktree/branch; selected task pane closures are explicit and reported.
-- `dev done --pr` leaves task/runtime/worktree for review.
-- `dev retire` externally closes, waits, revalidates and removes.
-- `dev sweep` reports first and routes DONE cleanup through retire.
+- `dev work park` records WARM; inside its own workspace it leaves runtime alive for normal agent exit.
+- `dev work park --cold --push` closes/removes only from an external safe caller.
+- `dev work done --ff` integrates and keeps worktree/branch; selected task pane closures are explicit and reported.
+- `dev work done --pr` leaves task/runtime/worktree for review.
+- `dev work retire` externally closes, waits, revalidates and removes.
+- `dev work sweep` reports first and routes DONE cleanup through retire.
 
 `workspace close` itself touches no branch or checkout, but it can kill the
 caller before later cleanup runs. Retirement therefore refuses caller
@@ -127,7 +127,7 @@ workspace/pane containment, mixed workspaces, and working/blocked/waiting
 agents. Unknown status needs external `--close-unknown`; close failure or timeout
 stops worktree removal. `--cold --keep-session` remains rejected.
 
-The independent `dev flow [repo]` preview treats local refresh as local-only and
+The independent `dev repo flow [repo]` preview treats local refresh as local-only and
 does not expose `--close-unknown`, `--assume-no-runtime`, shared-writer, or
 takeover overrides. `runtime=none` means session/agent occupancy is unobserved,
 not known closed; otherwise complete Git/task snapshots may still be fresh.
@@ -137,7 +137,7 @@ screen exits.
 ## Agent-session handoff
 
 Herdr exposes live agent session IDs and `Task.AgentSession` exists in the task
-schema. `dev prepare` captures one exact `provider:uuid` from its flag, the task,
+schema. `dev agent artifact prepare` captures one exact `provider:uuid` from its flag, the task,
 or a unique covering runtime session and persists it for artifact finalization.
 Resume still reopens/rebuilds checkout and runtime only; launching/resuming an
 agent conversation remains an explicit wrapper operation.
@@ -152,21 +152,21 @@ second client. Tmux and Zellij can report session creation/reuse but no pane.
 Zellij keeps exited sessions resurrectable in its listing; `dev` recognizes the
 exact `(EXITED - attach to resurrect)` marker and treats those sessions as closed
 (they cover no checkout and are never killed). A live name merely containing
-`EXITED` remains live. A name an exited session still owns fails `dev start`
+`EXITED` remains live. A name an exited session still owns fails `dev work start`
 closed, and a session that exits during layout inspection asks for a retry,
 rather than resurrecting its old layout — reclaim it with
 `zellij delete-session <name>`.
 `none` normally emits a shell `cd` directive in human mode;
-`dev wt open --no-focus` instead reports no runtime/no shell handoff and returns.
-`dev start --json` also suppresses that directive and stays pure JSON.
+`dev git worktree open --no-focus` instead reports no runtime/no shell handoff and returns.
+`dev work start --json` also suppresses that directive and stays pure JSON.
 
 Herdr supports native Windows. Runtime `auto` checks backend availability and
-uses `none` when no server is reachable. `dev shell-init powershell` consumes the
+uses `none` when no server is reachable. `dev self shell-init powershell` consumes the
 `cd` directive (via a `DEV_SHELL_CD_FILE` temp file rather than file descriptor 3).
 Fleet host connection support is separate from the Linux/macOS-only guarded
 repository workspace preparation described below.
 
-The trusted `dev shell-init` output installs a shell wrapper. Navigation uses a
+The trusted `dev self shell-init` output installs a shell wrapper. Navigation uses a
 private side channel containing one NUL-terminated path; the wrapper calls
 `builtin cd` or `Set-Location` without evaluating command output. The standalone
 binary's printable legacy directive cannot change its parent shell's directory.

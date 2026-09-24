@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-20
+verified_on: 2026-09-24
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -11,7 +11,7 @@ tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCod
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
 There are three independent full-screen models. Bare `dev` / `dev tui` is the
-eight-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
+eight-view inventory dashboard below. Preview-labelled `dev repo flow [repo]` is a
 TTY-only, plan-first lifecycle view for one canonical repository; it is not a
 dashboard tab or mode. `dev triage` is the cross-repository organizer.
 
@@ -179,13 +179,13 @@ n/N       quick-add / browse repository notes
 ctrl+o    task state filters
 ```
 
-A COLD worktree task must be rebuilt with `dev resume`; the dashboard does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory. At 97 or more terminal cells the TASKS table includes a display-width-aware `REPO` column; narrower layouts retain the previous columns and show repo/path in detail.
+A COLD worktree task must be rebuilt with `dev work resume`; the dashboard does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev work sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory. At 97 or more terminal cells the TASKS table includes a display-width-aware `REPO` column; narrower layouts retain the previous columns and show repo/path in detail.
 
 ### Repository flow
 
 ```bash
-dev flow              # exact current surface, or picker outside Git
-dev flow api          # explicit repository
+dev repo flow              # exact current surface, or picker outside Git
+dev repo flow api          # explicit repository
 ```
 
 Flow lists every registered worktree plus task-only COLD/DONE rows and labels
@@ -276,7 +276,7 @@ dev repo remote --refresh
 dev repo clone
 ```
 
-Outside a checkout, bare `dev start` uses the same picker UI over fast live
+Outside a checkout, bare `dev work start` uses the same picker UI over fast live
 local discovery, then fully resolves the selected repository before planning a
 task. Inside a repository it retains the immediate current-repository default
 without scanning every configured root. The default
@@ -341,14 +341,14 @@ The optional REPOS column `notes` shows a count. It is off by default because th
 The same source-of-truth workflow is available without the TUI:
 
 ```bash
-dev note add "try event subscription" --repo api --tag idea
-dev note list api
-dev note search "event subscription" --repo api
-dev note show <id-or-prefix>
-dev note edit <id-or-prefix>
-dev note delete <id-or-prefix>       # confirms
-dev note path api
-dev note reindex
+dev repo note add "try event subscription" --repo api --tag idea
+dev repo note list api
+dev repo note search "event subscription" --repo api
+dev repo note show <id-or-prefix>
+dev repo note edit <id-or-prefix>
+dev repo note delete <id-or-prefix>       # confirms
+dev repo note path api
+dev repo note reindex
 ```
 
 A note ID prefix must be unique and at least eight characters.
@@ -422,8 +422,8 @@ Keys are case-sensitive and cannot shadow globally owned dashboard bindings. `A`
 Start with a report:
 
 ```bash
-dev bootstrap ~/code /mnt/work
-dev bootstrap ~/code --json
+dev repo bootstrap ~/code /mnt/work
+dev repo bootstrap ~/code --json
 ```
 
 The scanner identifies canonical checkouts, linked worktrees, bare repositories, and symlink aliases, then deduplicates them by Git identity.
@@ -431,8 +431,8 @@ The scanner identifies canonical checkouts, linked worktrees, bare repositories,
 The recommended organization layer is a non-destructive symlink index:
 
 ```bash
-dev bootstrap ~/code --index ~/Projects --layout flat
-dev bootstrap ~/code --index ~/Projects --layout flat --apply
+dev repo bootstrap ~/code --index ~/Projects --layout flat
+dev repo bootstrap ~/code --index ~/Projects --layout flat --apply
 ```
 
 Physical moves are a separate, stricter mode. A move plan blocks dirty repositories, linked worktrees, live sessions/current working directories, aliases that would break, occupied destinations, and cross-filesystem renames. If any row is blocked, apply moves none.
@@ -442,8 +442,8 @@ Physical moves are a separate, stricter mode. A move plan blocks dirty repositor
 Bootstrap answers **where repositories are**. Adoption answers **which existing branches, worktrees, and sessions are active work**:
 
 ```bash
-dev adopt
-dev adopt --apply
+dev work adopt
+dev work adopt --apply
 ```
 
 Adopt reports by default and only writes task entries after `--apply` plus confirmation. It does not move, rename, or delete checkouts, and it excludes recognized harness-ephemeral worktrees.
@@ -497,7 +497,7 @@ observations incrementally. A slow runtime does not hold back repository rows.
 Pending/cached rows grant no authority for row-dependent actions. The new-repo
 wizard is an independent entry point and retains its final mutation checks.
 Only complete discovery removes missing rows; failures retain stale/unknown
-evidence. `r` remains local refresh; `dev cache clear repos` removes the snapshot.
+evidence. `r` remains local refresh; `dev self cache clear repos` removes the snapshot.
 SIZE retains its separate cache.
 
 Ctrl+O menus and submenus support `/` filtering, arrows and Enter; Escape clears
@@ -630,7 +630,7 @@ its asynchronous local catalog adapter and exact host/profile identities.
 ## Dashboard version and update hints
 
 The dashboard footer always shows the running version. When a newer stable
-release is known it adds the release tag and `dev upgrade`; updating remains an
+release is known it adds the release tag and `dev self upgrade`; updating remains an
 explicit command. It reads the existing 24-hour release cache first and checks
 in the background only after the first frame. `[update] check = false` or
 `DEV_NO_UPDATE_CHECK=1` disables checks and hints while retaining the current
@@ -679,3 +679,35 @@ noninteractive requests still fail instead of silently skipping selections.
 cancellation and return the original error with a nonzero exit status. Choosing
 `stage` followed by `open` is valid for a local repository. A missing installer
 can be bypassed by declining or explicitly skipping the optional skill.
+
+## Graduate a Try
+
+TRY → Ctrl+O → graduate opens the same wizard as `dev tries graduate`: choose a
+name/category and local (default), add-URL or create-remote publication, review,
+then confirm. Existing remotes are preserved. Cancellation applies no graduation
+or publication; remote failure reports retained local success separately and
+returns an error without automatic retry or rollback. See
+[Try graduation](try-graduation.md) for flags, defaults and remembered names.
+
+## Return a graduated repository to Try
+
+Use REPOS → Ctrl+O → demote to return a previously graduated Try to the experiment
+area. The action previews the same guarded move as `dev tries demote`; confirm
+the source and destination before applying. It is unavailable for an ordinary
+repository that has no graduation history.
+
+```bash
+dev tries demote <repo-or-path-or-catalog-id> --dry-run
+dev tries demote <repo-or-path-or-catalog-id>
+dev tries demote <catalog-id> --to ~/src/tries/2026-09-24-parser
+```
+
+The default is the recorded original Try path. An occupied destination or one
+outside the current `tries_root` requires a safe explicit `--to`. Demotion
+preserves current bytes, including dirty/untracked/ignored files, Git history
+and remotes, catalog ID, tags, notes and graduation history; the Try becomes
+active and present. It does not undo commits/publication or create a symlink.
+Task, runtime/agent and artifact claims, canonical repositories with linked
+worktrees, incomplete observations and stale plans block the move. Existing
+same-filesystem, identity, rollback and reconciliation guards still apply.
+See [command migration and Try transitions](../reference/cli-v0.3.md).

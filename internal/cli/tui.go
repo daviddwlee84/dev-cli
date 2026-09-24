@@ -182,13 +182,7 @@ binding runs through $SHELL -lic and the mode is shown in this listing.`,
 // interactive reports whether a real terminal is attached. Piping `dev` into
 // anything must produce the plain listing, not terminal control sequences.
 func interactive() bool {
-	for _, f := range []*os.File{os.Stdin, os.Stdout} {
-		info, err := f.Stat()
-		if err != nil || info.Mode()&os.ModeCharDevice == 0 {
-			return false
-		}
-	}
-	return true
+	return terminalPair(os.Stdin, os.Stdout)
 }
 
 func tuiStartRequest(r tui.RepoRow, branch, base string) wt.CreateRequest {
@@ -1018,17 +1012,6 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 			Status: "restored " + transition.Item.DisplayName(), RefreshRepos: true,
 		}, transitionErr
 
-	case tui.TryGraduate:
-		graduated, graduateErr := service.Graduate(ctx, experiment.GraduateRequest{
-			Ref: request.ID, Category: request.Category, Name: request.Name,
-		})
-		warnExperimentDiagnostics(app, graduated.Diagnostics)
-		if graduateErr != nil {
-			return tui.TryActionResult{}, graduateErr
-		}
-		result, openErr := open(graduated.Item, "graduated "+graduated.Plan.Name)
-		result.RefreshRepos = true
-		return result, openErr
 	}
 	return tui.TryActionResult{}, fmt.Errorf("unknown Try action %q", request.Action)
 }

@@ -599,6 +599,11 @@ func generateCommandReference(root *cobra.Command) string {
 		b.WriteString("\n")
 	}
 	writeCommand(&b, root, 0)
+	b.WriteString("### Supported shortcuts\n\nThese built-in routes remain supported. Canonical commands are documented above.\n\n| Shortcut | Canonical command | Behavior |\n|---|---|---|\n")
+	for _, alias := range commandAliases(root) {
+		fmt.Fprintf(&b, "| `%s` | `%s` | %s |\n", alias.from, alias.to, alias.detail)
+	}
+	b.WriteString("\n")
 	return b.String()
 }
 

@@ -15,9 +15,9 @@ It does not copy uncommitted work from the original checkout.
 ## Add a repository as a submodule
 
 ```bash
-dev submodule add                           # source/path/mode wizard
-dev submodule add owner/library libs/library --dry-run --json
-dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev git submodule add                           # source/path/mode wizard
+dev git submodule add owner/library libs/library --dry-run --json
+dev git submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
 dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
 ```
 
@@ -43,7 +43,7 @@ otherwise the new clone's actual default branch determines the commit. Default-
 branch mode creates a tracking branch without assuming its name is `main`.
 Both modes stage a fixed gitlink. This is not an `update --remote` policy and
 does not change future clone/worktree initialization or create task-member intent.
-Use `dev submodule develop` separately when the child belongs to a managed task.
+Use `dev git submodule develop` separately when the child belongs to a managed task.
 
 `--submodules=recursive|none` overrides the parent's effective initialization
 policy for the new child's descendants only. Addition stages `.gitmodules` and
@@ -59,7 +59,7 @@ optional `ref`, `submodules`, `phase`, `git_dir`, optional `head`/`branch`,
 `initialization-incomplete`, and `complete`; failures exit nonzero while still
 reporting any partial result. A failed clone/ref/staging step may retain files
 and metadata. Inspect the exact paths, finish metadata/staging manually where
-needed, and use `dev submodule init` inside the new child to retry missing
+needed, and use `dev git submodule init` inside the new child to retry missing
 descendants. Do not rerun add over existing paths, force-delete partial clones,
 or use the retirement-only `recover` command for an interrupted addition.
 
@@ -71,11 +71,11 @@ It never copies the browser URL as a substitute or fetches to resolve one.
 
 ```bash
 dev repo clone owner/dotfiles-all
-dev start dotfiles-all --task platform-change --base main \
+dev work start dotfiles-all --task platform-change --base main \
   --submodule dotfiles --submodule dotfiles-windows
 # In the new managed worktree:
-dev submodule status
-dev submodule develop another/module --submodule-base another/module=origin/main
+dev git submodule status
+dev git submodule develop another/module --submodule-base another/module=origin/main
 ```
 
 Clone and worktree creation initialize recursively by default. Each child starts
@@ -96,7 +96,7 @@ The clone's project settings are read after acquiring the outer repository.
 `--submodules=none` skips initialization. `--no-provision` skips dependency setup,
 not Git initialization. No child is automatically advanced to the latest main.
 
-`dev submodule init --dry-run` inspects locally. Without `--dry-run`, it fills
+`dev git submodule init --dry-run` inspects locally. Without `--dry-run`, it fills
 missing checkouts and may contact their configured sources. It preserves existing
 checkout HEADs and dirty content; a nonempty uninitialized directory is blocked.
 Initialization failure retains partial results, reports a failure, and prevents
@@ -113,8 +113,8 @@ The manager verifies prerequisites; it does not automatically commit, push or
 merge child work. Outer `--push` is not a recursive child push. Gitlink updates
 and conflict resolution remain explicit.
 
-`dev status`, `dev repo context`, `dev ls --json`, and repository UI evidence
-include submodule state. `dev submodule status --json` exposes the complete local
+`dev status`, `dev repo context`, `dev work list --json`, and repository UI evidence
+include submodule state. `dev git submodule status --json` exposes the complete local
 graph. Uninitialized, unavailable and failed observations never mean clean.
 These reads do not fetch or query remotes.
 
@@ -123,11 +123,11 @@ These reads do not fetch or query remotes.
 Run cleanup outside the target checkout and its runtime:
 
 ```bash
-dev park platform-change --cold --push --recursive
-dev resume platform-change --fetch
+dev work park platform-change --cold --push --recursive
+dev work resume platform-change --fetch
 # After the outer task has been integrated:
-dev retire platform-change --recursive
-dev sweep --merged-worktrees --recursive # report first
+dev work retire platform-change --recursive
+dev work sweep --merged-worktrees --recursive # report first
 ```
 
 Cold requires committed, pushed, reconstructible work, but not integration.
@@ -139,7 +139,7 @@ used to reconstruct selected branches at the gitlinks when resuming.
 including private refs and objects. It remains required for linked-worktree
 removal even when every gitlink is empty. The outer branch stays unless
 separately requested; canonical and shared repositories are never disposed.
-`--force` cannot bypass child checks. `dev flow` offers explicit recursive managed
+`--force` cannot bypass child checks. `dev repo flow` offers explicit recursive managed
 and unmanaged checkout actions; the done cleanup wizard asks about child disposal.
 
 For linked-worktree removal only, a never-initialized or fully empty gitlink can
@@ -196,8 +196,8 @@ paths when they remain unclaimed. An interruption or reused path retains the
 quarantine and reports its exact `journal.json`:
 
 ```bash
-dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json --dry-run
-dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json
+dev git submodule recover /exact/.dev-submodule-retirement-ID/journal.json --dry-run
+dev git submodule recover /exact/.dev-submodule-retirement-ID/journal.json
 ```
 
 Recovery restores rather than reusing an old proof to delete data. A removed

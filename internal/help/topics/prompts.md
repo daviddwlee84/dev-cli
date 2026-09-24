@@ -6,13 +6,13 @@ making `dev` an agent harness or a second lifecycle authority.
 ## Escalate only as far as needed
 
 ```text
-dev status / dev sweep / dev repo context
+dev status / dev work sweep / dev repo context
     |
     +-- enough facts? use done, park, sweep, or retire directly
     |
-    +-- dev prompt render <recipe>   inspect or copy the exact prompt
-    +-- dev prompt run <recipe>      one-shot analysis; no user stdin
-    +-- dev prompt open <recipe>     foreground conversation in this terminal
+    +-- dev agent prompt render <recipe>   inspect or copy the exact prompt
+    +-- dev agent prompt run <recipe>      one-shot analysis; no user stdin
+    +-- dev agent prompt open <recipe>     foreground conversation in this terminal
 ```
 
 All modes collect the same read-only deterministic recipe context. The receiver
@@ -22,13 +22,13 @@ state, or turns advice into lifecycle authorization.
 ## Built-in recipes
 
 ```bash
-dev prompt list
-dev prompt list --json
-dev prompt agents
-dev prompt agents --json
-dev prompt render pr-triage
-dev prompt render session-close
-dev prompt render workspace-closeout [repo-or-checkout]
+dev agent prompt list
+dev agent prompt list --json
+dev agent prompt agents
+dev agent prompt agents --json
+dev agent prompt render pr-triage
+dev agent prompt render session-close
+dev agent prompt render workspace-closeout [repo-or-checkout]
 ```
 
 `prompt agents` lists profiles by name with default/run/open availability and
@@ -61,9 +61,9 @@ strings are untrusted data, not instructions.
 | `open` | Start one foreground process attached to the current TTY. Prompt input must be file/argv so stdin stays conversational. No default timeout. |
 
 ```bash
-dev prompt run session-close --agent my-agent
-dev prompt open workspace-closeout . --agent my-agent
-dev prompt open workspace-closeout . --dry-run
+dev agent prompt run session-close --agent my-agent
+dev agent prompt open workspace-closeout . --agent my-agent
+dev agent prompt open workspace-closeout . --dry-run
 ```
 
 Dry-run prints the resolved agent, mode, cwd, transport, timeout, safe command
@@ -100,7 +100,7 @@ input = "file"
 wins; otherwise a sole configured agent wins. This is global profile selection:
 a default or sole profile missing the requested mode fails rather than falling
 back to another profile. Diagnostics list sorted mode-capable profiles and point
-to `dev prompt agents`. `--agent` completion also loads the parsed `--config` and
+to `dev agent prompt agents`. `--agent` completion also loads the parsed `--config` and
 shows only run-capable names below `prompt run` or open-capable names below
 `prompt open`, with sanitized optional descriptions; invalid config yields no
 dynamic candidates. Names are required, have no surrounding whitespace, compare
@@ -127,12 +127,12 @@ is host executable policy and is denied in repository `.dev-cli/config.toml`.
 
 ## Terminal, runtime, and permissions
 
-`dev prompt open` stays in the terminal that invoked it. It does not create,
+`dev agent prompt open` stays in the terminal that invoked it. It does not create,
 focus, reuse, or inject into Herdr/tmux/Zellij. Inside Herdr it naturally stays
 in the current pane. For a separate Herdr pane, create/focus one manually, enter
 the exact checkout, then run `prompt open` there.
 
-`dev start --run` is separate: it dispatches shell text only to the exact root
+`dev work start --run` is separate: it dispatches shell text only to the exact root
 pane returned for a newly created first-class Herdr worktree. Prompt handoff does
 not weaken that proof.
 
@@ -146,7 +146,7 @@ runs a command quoted by the reply. Review advice, then invoke `done`, `park`,
 Use a deterministic path first:
 
 ```bash
-dev done <task> --ff
+dev work done <task> --ff
 # or
 dev git pull-rebase
 ```
@@ -154,7 +154,7 @@ dev git pull-rebase
 If Git stops at a conflict, stay in that exact checkout and run:
 
 ```bash
-dev prompt open workspace-closeout . --agent my-agent
+dev agent prompt open workspace-closeout . --agent my-agent
 ```
 
 Discuss the semantic resolution, then explicitly continue or abort the Git

@@ -13,8 +13,8 @@ func staticContentInvocation(cmd *cobra.Command) bool {
 		printSkill, _ := cmd.Flags().GetBool("skill")
 		return printSkill
 	}
-	switch cmd.CommandPath() {
-	case "dev help", "dev skill print":
+	switch canonicalCommandPath(cmd) {
+	case "dev help", "dev agent skill print":
 		return true
 	default:
 		return false

@@ -28,6 +28,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
 )
 
@@ -390,6 +391,7 @@ func TestSkillsCheckWaitsForInitialLocalSnapshot(t *testing.T) {
 }
 
 func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
+	provider := testutil.GoCommand(t, t.TempDir(), "skill-provider", "package main\nfunc main() {}\n")
 	rows := []agentskill.Skill{
 		{
 			Name: "project-skill", Scope: agentskill.ScopeProject, ScopeRoot: "/src/demo",
@@ -409,7 +411,7 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	loaded, checked, added, updated := 0, 0, 0, 0
 	actions := newActions(&recorder{}, nil)
 	actions.EditFile = func(string) (tui.CapabilityEdit, error) {
-		return tui.CapabilityEdit{Command: exec.Command("true")}, nil
+		return tui.CapabilityEdit{Command: exec.Command(provider)}, nil
 	}
 	actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
 		loaded++
@@ -427,14 +429,14 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	}
 	actions.AddSkill = func() (*agentskill.MutationCommand, error) {
 		added++
-		return &agentskill.MutationCommand{Command: exec.Command("true")}, nil
+		return &agentskill.MutationCommand{Command: exec.Command(provider)}, nil
 	}
 	actions.UpdateSkill = func(row agentskill.Skill) (*agentskill.MutationCommand, error) {
 		updated++
 		if row.Name != "project-skill" || row.Scope != agentskill.ScopeProject {
 			t.Fatalf("updated wrong row: %+v", row)
 		}
-		return &agentskill.MutationCommand{Command: exec.Command("true")}, nil
+		return &agentskill.MutationCommand{Command: exec.Command(provider)}, nil
 	}
 
 	m := tui.New(actions, nil, nil)

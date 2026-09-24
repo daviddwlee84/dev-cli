@@ -17,9 +17,9 @@ A task is intent, not necessarily a worktree:
 
 ```bash
 dev repo open api                         # ad hoc; no task at all
-dev start api --task "typo" --direct      # current branch, usually main
-dev start api --task "small" --branch-only --base main
-dev start api --task "parallel" --base main  # default worktree
+dev work start api --task "typo" --direct      # current branch, usually main
+dev work start api --task "small" --branch-only --base main
+dev work start api --task "parallel" --base main  # default worktree
 ```
 
 Direct tasks can go HOT ↔ WARM and finish directly; they cannot go COLD because
@@ -37,7 +37,7 @@ uses the full lifecycle below.
 | ✅ done | merged | may remain open | resources stay until external retirement |
 
 READY, REVIEW, MERGED, and RETIRED are plan/result milestones, not additional
-persisted states. `dev flow [repo]` previews this graph for one repository:
+persisted states. `dev repo flow [repo]` previews this graph for one repository:
 Enter builds a guarded plan, then a separate approval applies it. Completion
 writes DONE but retains branch/checkout/runtime; Retire performs cleanup.
 
@@ -47,9 +47,9 @@ not a technical one.
 ## Parking
 
 ```bash
-dev park --next "reproduce the token refresh race, then add a regression test"
-dev park --wip                  # checkpoint uncommitted work first
-dev park --cold --push          # push, then remove the worktree
+dev work park --next "reproduce the token refresh race, then add a regression test"
+dev work park --wip                  # checkpoint uncommitted work first
+dev work park --cold --push          # push, then remove the worktree
 ```
 
 `--next` is the part that matters. Without it, resuming means re-deriving where
@@ -58,7 +58,7 @@ you were from a diff — which is most of the cost of a context switch.
 ## Resuming
 
 ```bash
-dev resume "token refresh"
+dev work resume "token refresh"
 ```
 
 Warm tasks still have their worktree, so this just reopens a session. Cold
@@ -75,10 +75,10 @@ sync branches.
 
 ```bash
 # on the machine holding the work
-dev park --cold --push
+dev work park --cold --push
 
 # on the machine picking it up
-dev resume <task> --fetch
+dev work resume <task> --fetch
 ```
 
 **One writer per branch at a time.** `dev` records an owner host and refuses to
@@ -93,10 +93,10 @@ get parallel branches.
 ## Finishing
 
 ```bash
-dev done          # TTY: inspect dirty content, then choose FF/PR/merged handling
-dev done --ff     # fast-forward and record DONE; resources stay
-dev done --pr     # publish for review; keep task/worktree active
-dev retire <task> # external close/wait/remove after DONE
+dev work done          # TTY: inspect dirty content, then choose FF/PR/merged handling
+dev work done --ff     # fast-forward and record DONE; resources stay
+dev work done --pr     # publish for review; keep task/worktree active
+dev work retire <task> # external close/wait/remove after DONE
 ```
 
 The interactive finish flow separates committed history from checkout content:
@@ -109,8 +109,8 @@ worktree whose latest content was not handled.
 ## Sweeping
 
 ```bash
-dev sweep            # report only
-dev sweep --apply    # act, confirming each change
+dev work sweep            # report only
+dev work sweep --apply    # act, confirming each change
 ```
 
 Reports drift (hot with no session, a worktree git no longer knows about),

@@ -37,7 +37,7 @@ as `indeterminate` rather than clean.
 Machine-readable output keeps every count separate:
 
 ```bash
-dev ls --json | jq '.[] | {
+dev work list --json | jq '.[] | {
   repo, branch, changed, staged, unstaged, untracked, conflicted,
   added, modified, deleted, renamed, ahead, behind
 }'

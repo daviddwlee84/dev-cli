@@ -2,7 +2,7 @@
 
 How to see what is waiting on you and whether its expected branch is healthy
 locally. `dev pr` is inventory only; generic agent handoff lives under
-`dev prompt`.
+`dev agent prompt`.
 
 ## What `dev pr` is
 
@@ -65,7 +65,7 @@ not permission to retire its worktree:
 
 ```bash
 dev pr list --scope local --state merged   # candidates only
-dev sweep --merged-worktrees               # local proof; report before apply
+dev work sweep --merged-worktrees               # local proof; report before apply
 ```
 
 Squash merge breaks ordinary ancestry equivalence, so a forge answer cannot
@@ -88,9 +88,9 @@ Schema version 1 is add-only: existing field names and meanings remain stable.
 For deterministic triage or closeout context, use the generic recipes:
 
 ```bash
-dev prompt render pr-triage
-dev prompt run pr-triage --agent my-agent
-dev prompt open workspace-closeout . --agent my-agent
+dev agent prompt render pr-triage
+dev agent prompt run pr-triage --agent my-agent
+dev agent prompt open workspace-closeout . --agent my-agent
 ```
 
 Run `dev help prompts` for render/run/open choice, nested host configuration,
@@ -101,7 +101,7 @@ transport, TTY/runtime, permissions, and closeout safety. There is no
 
 `gh` and `glab` are optional and independent. A signed-out provider is reported
 with the exact login command while another ready provider still lists. If none
-is authenticated, the command fails with remediation. `dev doctor` reports the
+is authenticated, the command fails with remediation. `dev self doctor` reports the
 same state. Azure DevOps pull-request inventory is not implemented and is
 reported unsupported rather than poisoning other results.
 

@@ -495,7 +495,7 @@ func TestGraduateRemoteRefreshesCatalogOrigin(t *testing.T) {
 	binDir := t.TempDir()
 	installCLINativeFixture(t, filepath.Join(binDir, "gh"), "graduate", "")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	out := h.mustRun("graduate", "remote-origin", "--remote", "--push=false")
+	out := h.mustRun("graduate", "remote-origin", "--remote", "--forge=github", "--push=false")
 	if !strings.Contains(out, "https://github.com/owner/remote-origin") {
 		t.Fatalf("graduate remote output: %q", out)
 	}
@@ -508,7 +508,7 @@ func TestGraduateRemoteRefreshesCatalogOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "git@github.com:owner/remote-origin.git") ||
+	if !strings.Contains(string(body), "https://github.com/owner/remote-origin.git") ||
 		!strings.Contains(string(body), "github.com/owner/remote-origin") {
 		t.Errorf("graduated catalog did not retain remote origin:\n%s", body)
 	}
@@ -521,12 +521,9 @@ func TestGraduateRefreshesOriginAfterPartialRemoteFailure(t *testing.T) {
 	binDir := t.TempDir()
 	installCLINativeFixture(t, filepath.Join(binDir, "gh"), "graduate-fail", "")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	_, errOut, err := h.run("graduate", "partial-remote", "--remote")
-	if err != nil {
-		t.Fatalf("partial remote failure should remain nonfatal: %v\n%s", err, errOut)
-	}
-	if !strings.Contains(errOut, "could not create the remote") {
-		t.Errorf("partial remote warning = %q", errOut)
+	_, errOut, err := h.run("graduate", "partial-remote", "--remote", "--forge=github")
+	if err == nil || !strings.Contains(err.Error(), "local graduation succeeded") {
+		t.Fatalf("partial remote failure must retain local success and return an error: %v\n%s", err, errOut)
 	}
 
 	assets, err := filepath.Glob(filepath.Join(h.home, "state", "assets", "*.toml"))
@@ -1987,10 +1984,13 @@ func main() {
   if len(args)>=2 && args[0]=="auth" && args[1]=="status" {return}
   if strings.HasPrefix(joined,"repo create ") {fmt.Println("https://github.com/acme/"+cfg.Text);return}
  case "graduate", "graduate-fail":
+  if len(args)>=2 && args[0]=="auth" && args[1]=="status" {return}
   if len(args)<3 || args[0]!="repo" || args[1]!="create" {break}
-  output,err:=exec.Command("git","remote","add","origin","git@github.com:owner/"+args[2]+".git").CombinedOutput()
-  if err!=nil {fmt.Fprint(os.Stderr,string(output));os.Exit(96)}
-  if cfg.Mode=="graduate-fail" {fmt.Fprintln(os.Stderr,"push failed");os.Exit(1)}
+  if cfg.Mode=="graduate-fail" {
+   output,err:=exec.Command("git","remote","add","origin","git@github.com:owner/"+args[2]+".git").CombinedOutput()
+   if err!=nil {fmt.Fprint(os.Stderr,string(output));os.Exit(96)}
+   fmt.Fprintln(os.Stderr,"publication failed after adding origin");os.Exit(1)
+  }
   fmt.Println("https://github.com/owner/"+args[2]);return
  case "skills-inventory":
   if joined=="--version" {fmt.Println("1.5.23");return}

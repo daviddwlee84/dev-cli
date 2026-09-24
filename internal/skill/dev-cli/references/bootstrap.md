@@ -8,22 +8,22 @@ migrate from ghq / Worktrunk / a hand-built directory layout.
 
 Use this order; do not skip the report before an operation:
 
-- [ ] 1. Inspect the effective config: `dev config show`.
-- [ ] 2. Scan only: `dev bootstrap <roots...>`.
+- [ ] 1. Inspect the effective config: `dev self config show`.
+- [ ] 2. Scan only: `dev repo bootstrap <roots...>`.
 - [ ] 3. Review canonical checkouts, worktrees, bare repos, aliases and warnings.
 - [ ] 4. Prefer a symlink index when the problem is navigation, not storage.
 - [ ] 5. Plan the operation without `--apply` and show the user every blocked row.
 - [ ] 6. Apply only after the user explicitly chose index vs move and the target.
-- [ ] 7. Verify with `dev repo list --long` and `dev doctor`.
-- [ ] 8. Run `dev adopt` separately to find work in flight; bootstrap itself does
+- [ ] 7. Verify with `dev repo list --long` and `dev self doctor`.
+- [ ] 8. Run `dev work adopt` separately to find work in flight; bootstrap itself does
       not invent task intent from filesystem layout.
 
 ## Report only
 
 ```bash
-dev bootstrap ~/code /mnt/work
-dev bootstrap ~/code --max-depth 0
-dev bootstrap ~/code --json
+dev repo bootstrap ~/code /mnt/work
+dev repo bootstrap ~/code --max-depth 0
+dev repo bootstrap ~/code --json
 ```
 
 A scan changes nothing. It recursively identifies canonical checkouts, linked
@@ -36,8 +36,8 @@ When existing repositories are in usable places but hard to navigate, make a
 catalog instead of moving them:
 
 ```bash
-dev bootstrap ~/code /mnt/work --index ~/Projects --layout flat
-dev bootstrap ~/code /mnt/work --index ~/Projects --layout flat --apply
+dev repo bootstrap ~/code /mnt/work --index ~/Projects --layout flat
+dev repo bootstrap ~/code /mnt/work --index ~/Projects --layout flat --apply
 ```
 
 Only symlinks are created. Physical repositories remain authoritative.
@@ -55,8 +55,8 @@ so the same clone appears once and the first root's path wins.
 ## Physical move — fragile, explicit only
 
 ```bash
-dev bootstrap ~/old --move ~/Projects --layout preserve    # plan only
-dev bootstrap ~/old --move ~/Projects --layout preserve --apply
+dev repo bootstrap ~/old --move ~/Projects --layout preserve    # plan only
+dev repo bootstrap ~/old --move ~/Projects --layout preserve --apply
 ```
 
 Do not add `--apply --yes` on the user's behalf. Move is blocked when a repo is
@@ -105,5 +105,5 @@ blocked reason as a required precondition, not as something to override.
 - An atomic rename cannot cross filesystems. Bootstrap refuses rather than
   falling back to recursive copy, because a partially copied `.git` directory
   is not a migration.
-- Existing worktrees are recorded at their current paths by `dev adopt`; they do
+- Existing worktrees are recorded at their current paths by `dev work adopt`; they do
   not have to be relocated to `paths.worktree_path`.

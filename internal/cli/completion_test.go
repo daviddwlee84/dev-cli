@@ -39,6 +39,60 @@ func TestCompletionScriptsUseThePublicCommand(t *testing.T) {
 	}
 }
 
+func TestCanonicalAndShortcutCompletionPaths(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("work", "start", "demo", "--task", "namespace", "--branch", "feat/namespace", "--base", "main")
+	id := task.MakeID("demo", "feat/namespace")
+	for _, path := range [][]string{{"park"}, {"work", "park"}} {
+		args := append([]string{"__complete"}, path...)
+		args = append(args, "--config", h.configPath, "demo")
+		out, errOut, err := h.runRaw(args...)
+		if err != nil || !strings.Contains(out, id+"\t") || !strings.HasSuffix(out, ":4\n") {
+			t.Fatalf("completion %v: %v\n%s\n%s", path, err, out, errOut)
+		}
+	}
+	out, errOut, err := h.runRaw("__complete", "")
+	if err != nil {
+		t.Fatalf("root completion: %v\n%s", err, errOut)
+	}
+	for _, want := range []string{"work\t", "agent\t", "self\t", "tries\t"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("root completion missing %q: %s", want, out)
+		}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		name, _, _ := strings.Cut(line, "\t")
+		if name == "start" || name == "skill" || name == "gitignore" || name == "completion" || strings.HasPrefix(name, "__") {
+			t.Errorf("root suggestions exposed shortcut/helper %q", line)
+		}
+	}
+	for _, path := range [][]string{{"gitignore"}, {"git", "ignore"}} {
+		args := append([]string{"__complete"}, path...)
+		out, _, err := h.runRaw(append(args, "py")...)
+		if err != nil || !strings.Contains(out, "python\t") {
+			t.Fatalf("ignore completion %v: %v\n%s", path, err, out)
+		}
+	}
+	for _, path := range [][]string{{"skill"}, {"agent", "skill"}} {
+		args := append([]string{"__complete"}, path...)
+		out, _, err := h.runRaw(append(args, "")...)
+		if err != nil || !strings.Contains(out, "transfer\t") {
+			t.Fatalf("family completion %v: %v\n%s", path, err, out)
+		}
+	}
+	for _, path := range [][]string{{"completion"}, {"self", "completion"}} {
+		args := append(path, "zsh")
+		out := h.mustRun(args...)
+		if !strings.Contains(out, "#compdef dev") || strings.Contains(out, "#compdef self") {
+			t.Fatalf("nested script changed public executable: %s", out)
+		}
+	}
+	out, _, err = h.runRaw("__complete", "help", "--tree", "agent", "ar")
+	if err != nil || !strings.Contains(out, "artifact\t") {
+		t.Fatalf("help subtree completion: %v\n%s", err, out)
+	}
+}
+
 func TestDynamicCompletionUsesParsedConfig(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "auth", "--branch", "feat/auth", "--base", "main")

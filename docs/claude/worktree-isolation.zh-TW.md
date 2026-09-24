@@ -55,7 +55,7 @@ Claude Code 拒絕 symlinked `.claude`/worktree creation path，也會在使用 
 
 Independent baseline work 使用 `fresh`；isolated worker 必須建立在目前 stream commits 上時使用 `head`。Uncommitted changes 不會自動出現在另一個 worktree。
 
-需要特定 existing branch 或 custom external location 時，用 Git 或 `dev wt create` 建立，不要把 `baseRef` 當任意 ref selector。
+需要特定 existing branch 或 custom external location 時，用 Git 或 `dev git worktree create` 建立，不要把 `baseRef` 當任意 ref selector。
 
 ## 攜帶 ignored files
 

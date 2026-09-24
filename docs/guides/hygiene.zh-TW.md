@@ -8,7 +8,7 @@ verified_on: 2026-09-21
 
 # Repository hygiene
 
-`dev hygiene` 將可選的 gitleaks、pre-commit、repo 政策、本機私密規則與安全文字
+`dev git hygiene` 將可選的 gitleaks、pre-commit、repo 政策、本機私密規則與安全文字
 交易整合。Scanner 命中是候選，並不直接代表已確認的 credential 洩漏。
 
 ## 檢查與設定
@@ -17,10 +17,10 @@ verified_on: 2026-09-21
 全域 hook。
 
 ```bash
-dev hygiene status
-dev hygiene status --check-remote
-dev hygiene setup --json
-dev hygiene setup --apply --plan <id> --yes
+dev git hygiene status
+dev git hygiene status --check-remote
+dev git hygiene setup --json
+dev git hygiene setup --apply --plan <id> --yes
 ```
 
 Status 讀取有效的 `core.hooksPath`、hook 與設定；辨識到 hook 只證明設定存在，
@@ -42,13 +42,13 @@ Setup 將設定檔寫入 project，先尊重 Git 生效的 `core.hooksPath`，�
 
 ## 批次設定與分階段遷移
 
-一般 commit 的呼叫鏈是 `Git -> pre-commit -> dev hygiene scan -> gitleaks +
+一般 commit 的呼叫鏈是 `Git -> pre-commit -> dev git hygiene scan -> gitleaks +
 隱私政策檢查`。Setup 是獨立設定步驟；commit 不會再呼叫 setup，也不需要 agent。
 
 ```bash
-dev hygiene manage --all
-dev hygiene manage /path/to/a /path/to/b --json
-dev hygiene setup --migrate-hooks --json
+dev git hygiene manage --all
+dev git hygiene manage /path/to/a /path/to/b --json
+dev git hygiene setup --migrate-hooks --json
 ```
 
 REPOS → Ctrl+O → hygiene 可查看設定狀態、最新既存掃描報告、明確選擇
@@ -79,7 +79,7 @@ Setup 與 scan 要求相容的 gitleaks 8.x，最低 8.30.0；CI 固定 8.30.1�
 
 Staged checker 本身不改檔，但 pre-commit 可能暫存未 stage 的變更，所以 recorder
 退出後才對其 checkout commit。目前不完整取代 agent-history-hygiene：
-`dev artifact finalize` 的既有 tracked-history handoff 仍依賴其 scripts；外部 archive
+`dev agent artifact finalize` 的既有 tracked-history handoff 仍依賴其 scripts；外部 archive
 使用 native snapshot 檢查。只要仍有 tracked workflow，這些安裝和 wiring 就保留。
 
 ## 政策與私密規則
@@ -103,12 +103,12 @@ Private 可見性只提供建議，不會自動弱化政策；未知也不當成
 查詢僅在 `status --check-remote` 發生，`--remote` 預設選 origin。
 
 ```bash
-dev hygiene rules policy --known warn --generic off --json
-dev hygiene rules apply --plan <id> --yes
-dev hygiene rules import --from ssh --json
-dev hygiene rules import --from ssh --select <candidate-id> --json
-dev hygiene rules import --from local --json
-dev hygiene rules add --id private-network --kind cidr --value-file network.txt \
+dev git hygiene rules policy --known warn --generic off --json
+dev git hygiene rules apply --plan <id> --yes
+dev git hygiene rules import --from ssh --json
+dev git hygiene rules import --from ssh --select <candidate-id> --json
+dev git hygiene rules import --from local --json
+dev git hygiene rules add --id private-network --kind cidr --value-file network.txt \
   --replacement 192.0.2.1 --json
 ```
 
@@ -151,7 +151,7 @@ include 均保留原命中。加引號的環境變數名稱不會自動放行，
 目前 user／SYSTEM ACL。不會自動刪除或匯出。
 
 ```bash
-dev hygiene rules allow --report <report-id> --finding <finding-id> \
+dev git hygiene rules allow --report <report-id> --finding <finding-id> \
   --reason 'Reviewed synthetic test fixture' --json
 ```
 
@@ -163,10 +163,10 @@ dev hygiene rules allow --report <report-id> --finding <finding-id> \
 ## 掃描範圍
 
 ```bash
-dev hygiene scan --scope worktree --json
-dev hygiene scan --scope staged --json
-dev hygiene scan --scope history --audit --timeout 40m --json
-dev hygiene --public-only --known off --generic off scan --scope history \
+dev git hygiene scan --scope worktree --json
+dev git hygiene scan --scope staged --json
+dev git hygiene scan --scope history --audit --timeout 40m --json
+dev git hygiene --public-only --known off --generic off scan --scope history \
   --range <full-from-oid>..<full-to-oid> --json
 ```
 
@@ -198,12 +198,12 @@ CI 僅使用公開 repo 規則，不具本機 SSH 字典。PR／push 掃變更�
 ## 掃描摘要
 
 ```bash
-dev hygiene report                                 # 此 checkout 最新保存的掃描
-dev hygiene report --scope staged --by rule --top 5 --findings
-dev hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
-dev hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
-dev hygiene report --rule privacy-email --values  # 遮罩值；隱含 --rescan
-dev hygiene report --json                          # hygiene_summary schema 1
+dev git hygiene report                                 # 此 checkout 最新保存的掃描
+dev git hygiene report --scope staged --by rule --top 5 --findings
+dev git hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
+dev git hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
+dev git hygiene report --rule privacy-email --values  # 遮罩值；隱含 --rescan
+dev git hygiene report --json                          # hygiene_summary schema 1
 ```
 
 `report` 彙總單次掃描，不逐筆列出所有 finding。預設讀取此 checkout 最新保存的
@@ -236,14 +236,14 @@ coverage gap，會先輸出摘要再以失敗狀態退出。
 舊 finding 沒有 file ID 時，`file_counts_complete` 為 false；檔案數只是遮罩路徑
 分組的下限。私人路徑 metadata 讓 `--path` 可比對原始檔名，而回報的 filter 值
 仍依政策遮罩；無效 path glob 會被拒絕。Agent 應優先
-使用 `dev hygiene report --json`，不要解析 `scan` 輸出或表格。
+使用 `dev git hygiene report --json`，不要解析 `scan` 輸出或表格。
 
 `--values` 顯示各規則遮罩後的相異值；除非 `--report` 指定的掃描已擷取值，否則
 隱含 `--rescan`。Secret 保留前後各兩個字元與長度（少於 12 字元只顯示長度）；
 私人規則顯示 `[private:N]`，email 為 `a•••@d•••.tld`，IPv4 為 `a.b.•.•`，IPv6
 為 `first:•••`，home path 為 `Users/x•••`。原始值與所在行內容不會進入 stdout、JSON
 或掃描紀錄，只寫入權限為 0600 的私人 `<report-id>.values.review.txt`；
-`dev hygiene review-path <report-id>` 只印出其位置。勿將該檔貼到聊天、Git 或
+`dev git hygiene review-path <report-id>` 只印出其位置。勿將該檔貼到聊天、Git 或
 CI logs。最多擷取 10,000 個值、每值 20 筆樣本；單一原始值上限 64 KiB，
 原始值／所在行內容／位置／規則 metadata 合計上限 16 MiB，產生的檢閱檔上限
 64 MiB。過大的值整個略過，不截取片段；達上限會標記 `values_truncated`。
@@ -259,13 +259,13 @@ Warning 本身不會阻擋 commit。`unsupported_text_encoding` 等 coverage gap
 歷史 gap 也附上觀察到的 `commit`。診斷不輸出原文；修復工作檔不會改寫舊 Git objects。
 
 ```bash
-dev hygiene repair-encoding --file .specstory/history/session.md --json
+dev git hygiene repair-encoding --file .specstory/history/session.md --json
 # 明確選擇刪除；預設則替換成 �：
-dev hygiene repair-encoding --file notes.txt --invalid remove --json
+dev git hygiene repair-encoding --file notes.txt --invalid remove --json
 # 檢閱私人提案，且對應 artifact writer 已退出後：
-dev hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
+dev git hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
 # 審閱並只 stage 所需修補，再檢查實際 index：
-dev hygiene scan --scope staged --json
+dev git hygiene scan --scope staged --json
 ```
 
 預設 `--invalid replace` 將每段連續無效 bytes 替換成一個 `�`；`remove` 刪除該段。
@@ -274,7 +274,7 @@ dev hygiene scan --scope staged --json
 已知二進位副檔名、NUL、UTF-16/32 BOM 需另行檢視，不猜測舊編碼或原始字元。
 
 修復使用簽署 plan、即時檔案身分檢查及私人原始 bytes 備份，可經
-`dev hygiene restore` 還原，不依賴 secret scanner。Artifact 修改仍要求 writer
+`dev git hygiene restore` 還原，不依賴 secret scanner。Artifact 修改仍要求 writer
 已停止並通過下方的 writer guard，涵蓋大小寫變體與巢狀 artifact 目錄。編碼修復
 拒絕尾端句點／空白與 DOS 短檔名形式，必須使用標準長路徑；hook 不會自動修復。Apply 只修改工作檔、完整保留
 index，因此部分 staging 的檔案在重新審閱並 stage 修補前，staged scan 仍可能失敗。
@@ -283,14 +283,14 @@ index，因此部分 staging 的檔案在重新審閱並 stage 修補前，stage
 ## 預覽、套用與恢復
 
 ```bash
-dev hygiene redact --report <report-id> --file notes.md --json
-dev hygiene redact --report <report-id> --finding <finding-id> --json
-dev hygiene review-path <id>  # 私下開啟提案，勿貼回聊天
-dev hygiene redact --apply --plan <id> --yes
+dev git hygiene redact --report <report-id> --file notes.md --json
+dev git hygiene redact --report <report-id> --finding <finding-id> --json
+dev git hygiene review-path <id>  # 私下開啟提案，勿貼回聊天
+dev git hygiene redact --apply --plan <id> --yes
 # 只有在確切 artifact writer 已退出後：
-dev hygiene redact --apply --plan <id> --yes --writer-stopped
-dev hygiene restore --receipt <receipt-id> --json
-dev hygiene restore --receipt <receipt-id> --apply --yes
+dev git hygiene redact --apply --plan <id> --yes --writer-stopped
+dev git hygiene restore --receipt <receipt-id> --json
+dev git hygiene restore --receipt <receipt-id> --apply --yes
 ```
 
 所有支援的一般文字檔皆可選。Plan 綁定 checkout、HEAD／branch、政策、scanner
@@ -314,7 +314,7 @@ raw 外部 writer 不受 dev 鎖保護。
 
 ## Artifact writer guard
 
-Redact、encoding repair、restore、批次 `manage` 與 `dev artifact`
+Redact、encoding repair、restore、批次 `manage` 與 `dev agent artifact`
 finalize／archive／migrate 共用同一個 live writer 檢查，針對審閱的確切目標檔案；
 archive 仍不修改來源 bytes。
 任何涵蓋此 checkout 的其他已辨識 agent，無論狀態為何都會阻擋 artifact 修改。

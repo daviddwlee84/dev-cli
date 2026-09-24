@@ -4,7 +4,7 @@ lang: zh-TW
 authority: project
 status: evolving
 minimum_version: v0.2.33
-verified_on: 2026-09-18
+verified_on: 2026-09-24
 ---
 
 # AI 產物：保存、封存與發行
@@ -52,15 +52,15 @@ SpecStory 可在各 worktree 的 `.specstory/history/` 寫入，或明確指定
 不會 stage 仍在變動中的 transcript：
 
 ```bash
-dev hygiene status
-dev hygiene scan --scope staged --json
-dev prepare --session codex:<uuid>
+dev git hygiene status
+dev git hygiene scan --scope staged --json
+dev agent artifact prepare --session codex:<uuid>
 # 精確的 recorder 停止後，從 checkout 外執行：
-dev artifact finalize --intent <id> --writer-stopped
+dev agent artifact finalize --intent <id> --writer-stopped
 ```
 
 Prepare 不會停止 writer。不要反覆脫敏仍被 recorder 從 native source
-重寫的檔案。`dev hygiene redact` 使用審閱後的精確 plan；artifact 修改
+重寫的檔案。`dev git hygiene redact` 使用審閱後的精確 plan；artifact 修改
 還需 writer 結束的證據。暫時穩定的 bytes 不能證明 process 已退出。
 
 Hygiene redact／repair-encoding／restore／manage 與 artifact finalize／archive／
@@ -80,7 +80,7 @@ worktree 前保留或封存 history；ignored 不等於可丟棄或已備份。
 
 ## 精確選取與 co-commit closeout（v0.2.40）
 
-`dev prepare --specstory-path PATH` 可在同一 session 有多份匯出時選取一個精確
+`dev agent artifact prepare --specstory-path PATH` 可在同一 session 有多份匯出時選取一個精確
 Markdown 檔案。保存的選取必須符合嚴格 SpecStory preamble 中的 provider 與
 UUID，且位於設定的 capture 範圍內：source commit 使用 `.specstory/history/`，
 archive 則使用該 policy 的 capture root。路徑穿越、symlink 與身分不符都拒絕。
@@ -107,7 +107,7 @@ native backend；既有 v1 journal 不會默默升級。
 3. 在該 wrapper 啟動的 agent 內排入精確 handoff：
 
    ```bash
-   dev prepare --closeout co-commit --session 'claude:<uuid>' \
+   dev agent artifact prepare --closeout co-commit --session 'claude:<uuid>' \
      --specstory-path .specstory/history/session.md \
      --plan .claude/plans/task.md --message-file /path/to/commit-message.txt --json
    ```
@@ -125,8 +125,8 @@ native backend；既有 v1 journal 不會默默升級。
 5. 真實 wrapper 完成後，由外部 coordinator 審閱 handoff 並明確授權 finalize：
 
    ```bash
-   dev artifact list --json
-   dev artifact finalize --intent '<id>' --allow-commit --json
+   dev agent artifact list --json
+   dev agent artifact finalize --intent '<id>' --allow-commit --json
    ```
 
    可加 `--revision HASH` 綁定 native revision。Dev 先委派 canonical prepare-only，
@@ -146,7 +146,7 @@ index／tool／policy 身分。
 Sanitation review 被阻擋時，先唯讀檢查：
 
 ```bash
-dev artifact finalize --intent '<id>' --preview-review --json
+dev agent artifact finalize --intent '<id>' --preview-review --json
 ```
 
 Preview 不可搭配 `--allow-commit`、`--review-file` 或 `--rotation-confirmed`。
@@ -173,10 +173,10 @@ secret bytes、建立全面豁免或繞過 Git hooks。只有實際完成必要�
 # 先用一般 Git 建立 archive，設定好 Git identity。
 git init -b main /path/to/history
 # 明確選擇 private 原稿保存；也可選 check 或 redact。
-dev artifact setup --mode archive --source specstory --archive /path/to/history \
+dev agent artifact setup --mode archive --source specstory --archive /path/to/history \
   --protection off --json
-dev artifact setup --apply --plan <id> --yes
-dev artifact status
+dev agent artifact setup --apply --plan <id> --yes
+dev agent artifact status
 # Repository setup 使用同一個 planner：
 dev repo setup --artifacts --mode unmanaged --json
 ```
@@ -199,12 +199,12 @@ config，且本機 Markdown 匯出已啟用。Tracked 或複雜 config 需人工
 ## 封存副本與查找
 
 ```bash
-dev artifact archive --session codex:<uuid> --json
+dev agent artifact archive --session codex:<uuid> --json
 # 私下審閱 proposal，recorder 結束後：
-dev artifact archive --apply --plan <id> --yes --writer-stopped
-dev artifact find --session codex:<uuid>
-dev artifact find --commit <full-source-commit-id>
-dev artifact find 'literal search text' --all
+dev agent artifact archive --apply --plan <id> --yes --writer-stopped
+dev agent artifact find --session codex:<uuid>
+dev agent artifact find --commit <full-source-commit-id>
+dev agent artifact find 'literal search text' --all
 ```
 
 `--source files` 使用可重複的 `--file` 選取已設定範圍內的精確檔案。盤點上限
@@ -221,7 +221,7 @@ Archive 的 `projects/` 保存普通檔案與 metadata，關聯 project/session�
 
 `off` 不要求 scanner，原樣保存；`check` 使用 source repo 已啟用的 hygiene
 policy；`redact` 提出副本替換並重新檢查結果。停用的類別仍停用，skipped 不等於
-clean。阻擋 report 提供安全 finding ID，可用既有 `dev hygiene rules allow`
+clean。阻擋 report 提供安全 finding ID，可用既有 `dev git hygiene rules allow`
 流程處理；fixture exception 仍需精確範圍、審閱與理由。Snapshot 支援 inline
 規則及 useDefault，不支援外部 gitleaks rule-file includes。
 
@@ -230,7 +230,7 @@ clean。阻擋 report 提供安全 finding ID，可用既有 `dev hygiene rules 
 副本與 recovery 留在 Git 外的 `paths.state_dir`，不隨 cache clear 刪除。
 檔名與 metadata 仍可能識別個人或系統，分享前應審閱。
 
-Product／policy changes commit 後，`dev prepare` 也支援 archive policy。
+Product／policy changes commit 後，`dev agent artifact prepare` 也支援 archive policy。
 Off/check 可在 writer 結束後直接 finalize。Redact 要先審閱 `artifact archive`
 的 plan，再用 `artifact finalize --archive-plan <id> --writer-stopped`。
 經審閱的 plans 跟 product changes commit；prepared SpecStory archive handoff
@@ -255,18 +255,18 @@ Intent 未直接符合 checkout 路徑時，readiness 先核對 canonical Git co
 ## 明確的 Git 同步與原版備份
 
 ```bash
-dev artifact sync --push --json       # preview 會查詢設定的 remote
-dev artifact sync --apply --plan <id> --yes
-dev artifact sync --pull --json       # 另一個 preview，只允許 fast-forward
+dev agent artifact sync --push --json       # preview 會查詢設定的 remote
+dev agent artifact sync --apply --plan <id> --yes
+dev agent artifact sync --pull --json       # 另一個 preview，只允許 fast-forward
 
-dev artifact migrate --mode untrack --path .specstory/history --json
-dev artifact migrate --apply --plan <id> --yes --writer-stopped
+dev agent artifact migrate --mode untrack --path .specstory/history --json
+dev agent artifact migrate --apply --plan <id> --yes --writer-stopped
 
-dev artifact migrate --mode split --path .specstory/history --json
-dev artifact migrate --apply --plan <id> --yes
+dev agent artifact migrate --mode split --path .specstory/history --json
+dev agent artifact migrate --apply --plan <id> --yes
 # 可選：把原版 named refs 發布到另一個空目的地。
-dev artifact backup <completed-migration-id> --remote <git-url> --json
-dev artifact backup --apply --plan <backup-plan-id> --yes
+dev agent artifact backup <completed-migration-id> --remote <git-url> --json
+dev agent artifact backup --apply --plan <backup-plan-id> --yes
 ```
 
 Untrack 保存原始 refs 與選定的目前檔案、編輯 ignore、只移除選定的 index
@@ -309,7 +309,7 @@ dev-cli 的 release source archive 透過 `.gitattributes` 排除 repo root 的
 但會從父 module ZIP 排除巢狀 module；這些標記沒有產品 package 或依賴。
 不可把標記放在 embedded／generated build inputs 上，也不建立空的 agent 目錄。
 
-`python3 scripts/check-distribution.py --version v0.2.41` 分別產生真正的 Git
+`python3 scripts/check-distribution.py --version v0.3.1` 分別產生真正的 Git
 archive 與使用固定 `golang.org/x/mod v0.38.0` 的 module ZIP；只有暫存 clone
 會停用 module 測試的 export attributes。兩種 payload 都會解壓、編譯，並驗證
 版本、help、completion 與 bundled skill。這不會縮小一般 Git clone 或舊 tags。

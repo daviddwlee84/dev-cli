@@ -8,21 +8,21 @@ not mean the Git checkout is healthy.
 Use three separate milestones:
 
 1. **READY** — by default, commit product work and leave an empty index, run
-   `dev prepare`, then exit normally so the post-SpecStory finalizer can preserve
+   `dev agent artifact prepare`, then exit normally so the post-SpecStory finalizer can preserve
    the exact final transcript in its selected source-commit or external-archive
    destination. A manual product-first finalizer must pass `--writer-stopped`;
    a Claude SessionEnd observer can provide the same durable proof without
    staging during teardown. Explicit co-commit has separate proof below.
-2. **MERGED** — `dev done --ff`, or external-merge verification with
-   `dev done --merged --base-ref <ref>`, records DONE. Explicit and
+2. **MERGED** — `dev work done --ff`, or external-merge verification with
+   `dev work done --merged --base-ref <ref>`, records DONE. Explicit and
    non-interactive completion keeps worktree/branch; selected interactive task
    pane closures are reported separately. Bare interactive
    completion may continue into a separately confirmed cleanup preview.
-3. **RETIRED** — from outside the target workspace run `dev retire`. It closes
+3. **RETIRED** — from outside the target workspace run `dev work retire`. It closes
    eligible runtime sessions, waits until they disappear, revalidates Git, and
    removes the worktree without force.
 
-`dev flow [repo]` exposes Retire only for an exact DONE task. It first shows
+`dev repo flow [repo]` exposes Retire only for an exact DONE task. It first shows
 conditions, ordered effects, resources retained, and a fallback command; branch
 deletion is a separate typed option. Apply reloads the exact task revision and
 Git/worktree/ref/runtime/artifact identity under locks, repeats safety checks
@@ -75,7 +75,7 @@ private review/rotation requirements and native Windows limits.
 
 ## Choose the containment base
 
-`dev retire --base <ref>` overrides the containment target for a DONE task or
+`dev work retire --base <ref>` overrides the containment target for a DONE task or
 linked worktree without changing recorded task intent. Resolution checks a local
 branch (`refs/heads/X`), then a remote-tracking branch (`refs/remotes/X`, such as
 `origin/main`), then a commit. Fully qualified branch refs keep their named kind.
@@ -87,8 +87,8 @@ after a squash are not ancestry proof and do not waive containment checks.
 Without an override, task retirement keeps its recorded base. A recorded
 fork-point commit is never silently replaced by the default branch: if it cannot
 prove integration, retirement stays blocked with `pass --base <branch>` guidance.
-After `dev done --merged --base-ref X`, cleanup hints, the cleanup wizard and the
-external coordinator carry X forward as `dev retire --base X <task>`. If a shell
+After `dev work done --merged --base-ref X`, cleanup hints, the cleanup wizard and the
+external coordinator carry X forward as `dev work retire --base X <task>`. If a shell
 handoff cannot carry the override, dev prints the external command instead.
 
 Optional `--delete-branch` still runs ordinary `git branch -d`, whose own merged
@@ -100,7 +100,7 @@ Retirement never overrides `working`, `blocked`, or `waiting` agents. Unknown
 status needs external `--close-unknown`. A workspace containing panes outside
 the target is mixed-purpose and must be reorganized or closed manually.
 
-The bare interactive `dev done` cleanup preview shows those workspace panes and
+The bare interactive `dev work done` cleanup preview shows those workspace panes and
 agent states before offering keep, retire, or retire plus branch deletion. If
 the target is the caller's Herdr workspace, dev creates a fresh exact-root-pane
 workspace in the canonical checkout and hands a short-lived, single-use intent
@@ -127,17 +127,17 @@ protections. Do not use them on an agent-owned checkout. Existing expert CLI
 acknowledgements remain available, but the flow preview deliberately omits dirty
 discard, shared-writer/takeover, and unknown-runtime overrides.
 
-Task-backed `dev retire` and exact unmanaged path retirement use taskflow
+Task-backed `dev work retire` and exact unmanaged path retirement use taskflow
 (the latter requires contained removal). Some record-only/orphan-salvage `sweep`
 reconciliation paths remain separate; not every cleanup uses the same planner.
 
-From the canonical main checkout, `dev sweep --merged-worktrees` reports both
+From the canonical main checkout, `dev work sweep --merged-worktrees` reports both
 tracked and unmanaged linked worktrees whose named branches are contained in
 main. Review the exact candidates and blockers first; apply only after user
 confirmation. Worktree retirement keeps branches unless `--delete-branches`
 was separately requested.
 
-`dev sweep --base <ref>` also forwards the selected base to DONE task retirement;
+`dev work sweep --base <ref>` also forwards the selected base to DONE task retirement;
 `--merged-worktrees` uses its verified base for managed tasks as well as unmanaged
 checkouts. Reviewed retire/remove plans bind worktree-list authority only to the
 same branch or paths equal to, containing, or nested under the target. Removing
@@ -148,9 +148,9 @@ makes the plan stale; containment and all other guards remain required.
 Claude Workflow turn-scoped worktrees have a separate strict V1 audit:
 
 ```bash
-dev sweep --ephemeral-worktrees [--stale-days 14] [--json]
-dev sweep --ephemeral-worktrees --apply
-dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+dev work sweep --ephemeral-worktrees [--stale-days 14] [--json]
+dev work sweep --ephemeral-worktrees --apply
+dev work sweep --ephemeral-worktrees --apply --delete-branches --base main
 ```
 
 Run it only from the canonical non-bare checkout. The report verifies one exact

@@ -117,10 +117,6 @@ func (m Model) openTryForm(action TryAction, row TryRow) (Model, tea.Cmd) {
 	case TryRestore:
 		overlay.title = "restore " + row.Item.DisplayName()
 		overlay.addField("to", "to", "optional basename/path under tries_root", "")
-	case TryGraduate:
-		overlay.title = "graduate " + row.Item.DisplayName()
-		overlay.addField("category", "category", "optional project category", "")
-		overlay.addField("name", "name", "optional project name", "")
 	default:
 		m.err = fmt.Errorf("Try action %q has no form", action)
 		return m, nil
@@ -369,8 +365,6 @@ func (m Model) submitTryOverlay() (tea.Model, tea.Cmd) {
 		request.Note = value("note")
 	case TryRestore:
 		request.To = value("to")
-	case TryGraduate:
-		request.Category, request.Name = value("category"), value("name")
 	case TryArchive:
 		if value("confirm") != "YES" {
 			m.err = fmt.Errorf("confirmation must be exactly YES")

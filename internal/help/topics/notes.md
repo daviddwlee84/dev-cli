@@ -5,12 +5,12 @@ Capture informal thoughts without adding another dot-folder to the repository.
 ## Quick use
 
 ```bash
-dev note add "try event subscription" --repo api --tag idea
-dev note list api
-dev note search "event subscription"
-dev note show <id-or-prefix>
-dev note edit <id-or-prefix>
-dev note delete <id-or-prefix>
+dev repo note add "try event subscription" --repo api --tag idea
+dev repo note list api
+dev repo note search "event subscription"
+dev repo note show <id-or-prefix>
+dev repo note edit <id-or-prefix>
+dev repo note delete <id-or-prefix>
 ```
 
 Inside a repo, `--repo` is optional. An ID prefix must be unique and at least
@@ -19,9 +19,9 @@ eight characters.
 ## Choose the right note-like field
 
 - task `--next` is the next executable action;
-- `dev park --note` records context on one task;
+- `dev work park --note` records context on one task;
 - `dev repo mark --note` stores one catalog metadata summary;
-- `dev note` stores multiple durable repository observations.
+- `dev repo note` stores multiple durable repository observations.
 
 Quick notes are not task lifecycle state and do not overwrite the catalog
 summary.
@@ -64,11 +64,11 @@ does not synchronize note or catalog files; sync both parts of sidecar state
 when attachments must travel between hosts.
 
 ```bash
-dev note path api
-dev note path --all
-dev note reindex
-dev cache clear notes       # source Markdown remains
-dev note search "query"     # rebuilds missing/stale index
+dev repo note path api
+dev repo note path --all
+dev repo note reindex
+dev self cache clear notes       # source Markdown remains
+dev repo note search "query"     # rebuilds missing/stale index
 ```
 
 Search is term-wise prefix FTS for Latin text, with literal term-wise fallback

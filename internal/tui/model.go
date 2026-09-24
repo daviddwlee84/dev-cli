@@ -4136,18 +4136,14 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		if err != nil {
 			return func() tea.Msg { return skillProcessMsg{action: "update", err: err} }
 		}
-		proc, finish, err := mutation.Prepare()
-		if err != nil {
-			return func() tea.Msg { return skillProcessMsg{action: "update", err: err} }
-		}
 		lockName := row.Name
 		if row.Lock != nil {
 			lockName = row.Lock.Name
 		}
-		return runExecProcess(proc, func(err error) tea.Msg {
+		return runSkillMutation(mutation, func(err error) tea.Msg {
 			return skillProcessMsg{
 				action: "update", name: row.Name, lockName: lockName,
-				scope: row.Scope, checkout: row.Checkout, err: finish(err),
+				scope: row.Scope, checkout: row.Checkout, err: err,
 			}
 		})
 	}

@@ -5,7 +5,7 @@ Create, clone, or initialize a repository from any directory.
 Clones initialize submodules recursively at gitlinks by default; they do not
 advance children to main. Use `--submodules=none` or `[submodules].init = "none"`
 to opt out. Initialization failure retains the clone without runtime handoff;
-`dev submodule init` retries missing children.
+`dev git submodule init` retries missing children.
 
 ```bash
 dev repo new                         # interactive wizard
@@ -46,14 +46,14 @@ Bare `repo clone` selects exact clone URLs from the existing private forge cache
 with a manual source item for URLs, paths, and `owner/name`. It accepts stale or
 incomplete candidates with a warning but never performs an implicit network
 refresh; use `dev repo remote --refresh` deliberately. Outside a checkout, bare
-`dev start` selects a local repository from fast live discovery and fully
+`dev work start` selects a local repository from fast live discovery and fully
 resolves it afterward; the in-repository path keeps its immediate current default.
 The configured selector defaults to `fzf`, falls back to dev's built-in picker
 when absent, and can be forced built-in with `[picker] command = []`.
 
 ## Templates and check-in
 
-To add a dependency inside a repository, use `dev submodule add [source] [path]`
+To add a dependency inside a repository, use `dev git submodule add [source] [path]`
 or `dev repo add-as-submodule`, not `repo clone`. The source picker combines
 known local remotes and cached forge repositories. The wizard offers pinned or
 remote-default-branch checkout; non-interactive default is pinned. Optional
@@ -149,7 +149,7 @@ keeps a file selectable without creating it; --enable claude-plans-directory
 explicitly restores the old placeholder.
 
 Global presets and components live in `$XDG_CONFIG_HOME/dev/scaffolds.toml` and are managed
-with `dev config scaffolds init|show|path|edit`. A repository may commit
+with `dev self config scaffolds init|show|path|edit`. A repository may commit
 `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml`; only portable setup and
 worktree policy is allowed there. Paths, state, runtime and credentials remain
 host-owned global configuration.
@@ -160,9 +160,9 @@ from `.dev-cli/scaffolds.toml`, plus
 and content hash. Legacy `.dev.toml` retains its compatibility behavior:
 
 ```bash
-dev config show --project
-dev config trust . --yes
-dev config trust . --revoke
+dev self config show --project
+dev self config trust . --yes
+dev self config trust . --revoke
 ```
 
 Changing executable configuration invalidates the prior approval. Trust data
@@ -179,15 +179,15 @@ or push failure never deletes the checkout.
 Final handoffs are explicit:
 
 - `stay` prints the result.
-- `cd` enters it through `dev shell-init`.
+- `cd` enters it through `dev self shell-init`.
 - `open` opens the configured runtime, falling back to `cd` with no runtime.
 - `start` continues into the normal tracked-task wizard.
 
-Neither repository bootstrap nor `dev start` launches a coding agent.
+Neither repository bootstrap nor `dev work start` launches a coding agent.
 
 ## Repository homepage
 
-`dev browse` and `dev repo browse [repo-or-path]` open the repository homepage.
+`dev repo browse` and `dev repo browse [repo-or-path]` open the repository homepage.
 Use `--print` to output only the HTTPS URL, or `--remote <name>` to select a remote.
 The default is the current branch's upstream, then origin, then the sole remote;
 otherwise interactive use asks and scripts must select. Resolution is local and

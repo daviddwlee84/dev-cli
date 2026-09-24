@@ -2,11 +2,48 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-21
+verified_on: 2026-09-24
 tested_with: Claude Code 2.1.259
 ---
 
 # Compatibility and known limitations
+
+## Graduate wizard and remembered names (v0.3.1)
+
+TTY graduation now previews and confirms through the shared CLI/TRY wizard.
+`--yes` and non-TTY invocations remain direct; `--dry-run` never prompts or
+publishes. New `--remote-url`, `--forge`, `--namespace` and `--visibility` flags
+extend `[try]`/`--name`; `--remote`, `--private` and `--push` remain supported.
+Any existing remote blocks new add/create requests and is preserved by local
+moves. Remote-step failures now return nonzero while retaining local success
+and completed remote effects, with no automatic retry or rollback.
+
+The optional schema-1 `experiment.graduated_name` records the last successful
+local graduation name alongside its time/path. Legacy records remain readable;
+valid POSIX/Windows `graduated_path` basenames provide in-memory fallback without
+read-time migration. Explicit names win, and categories are not remembered.
+See [Try graduation](../guides/try-graduation.md).
+
+## v0.3 command paths and Try demotion
+
+The 17 primary entrypoints reorganize command discovery while keeping all old
+root shortcuts, flags, exit behavior and documented JSON compatible. `work`
+does not rename persisted task modes/states, and grouped commands retain static
+help/completion and existing safety boundaries. `gist` stays GitHub-only;
+`try <name>` remains create-or-open even for management-word names. Reload shell
+integration after upgrading. See [the migration map](cli-v0.3.md).
+
+`tries demote` only returns previously graduated Tries. It retains current files,
+Git/remotes and catalog metadata and never reverses publication or creates a
+symlink. Claims, incomplete observations, unsafe destinations and stale plans
+block the move; the original path must be safe under the current Try root or an
+explicit `--to` is required. There is no general repo-to-Try conversion, automatic
+whole-clone eviction, mirror synchronization or remote Tab search in this change.
+
+Demotion observes all available runtime backends; incomplete coverage cannot
+prove absence. On Windows, demotion and concurrent dev lifecycle writers must
+all use v0.3.0 or later to share the lease across the directory move. Older dev
+binaries, raw Git and external tools are outside this move guarantee.
 
 Submodule addition and REPOS/REMOTE clone-URL copy are additive commands/actions.
 Addition supports network sources and new destinations only, defaults to pinned,
@@ -64,7 +101,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | remote portable-file plan/apply | Git, SSH target running a compatible `dev`, matching existing clone/branch/commit; apply also needs a verified machine UUID pin | fails before content is sent or leaves the target unchanged; no clone/task fallback is inferred |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
-| preview repository flow | terminal input/output | `dev flow` refuses non-TTY use and points to `dev repo context` / JSON inventory |
+| preview repository flow | terminal input/output | `dev repo flow` refuses non-TTY use and points to `dev repo context` / JSON inventory |
 | interactive repository picker | terminal input/output; optional configured `fzf`-compatible selector | a missing selector uses dev's built-in picker; non-TTY input keeps line prompts |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe files are diagnosed; no `ssh` process or network is needed |
@@ -73,8 +110,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | canonical machine registry | linked `modernc.org/sqlite` | no external database executable; missing registry is an empty read-only view until explicit enrollment |
 | public companion derivation and Ed25519 generation | system `ssh-keygen` | an existing validated `.pub` can still be used; derivation/generation is unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
-| terminal multiplexing on Windows | native Herdr installation and reachable server | Runtime `auto` falls back to `none` when no backend is available; `dev shell-init powershell` still moves the shell |
-| in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
+| terminal multiplexing on Windows | native Herdr installation and reachable server | Runtime `auto` falls back to `none` when no backend is available; `dev self shell-init powershell` still moves the shell |
+| in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev self upgrade` delegates to the package manager's upgrade command instead |
 | verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
 ## Confirmed project limitations
@@ -92,7 +129,7 @@ Inventory's additive interop receipts are historical, not live health evidence.
 
 ### MCP inventory is static and intentionally incomplete
 
-`dev mcp list` reads documented static files for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. An absolute `CLAUDE_CONFIG_DIR` relocates Claude user sources; local Claude rows retain their project key, and documented user/project/local/managed project approvals annotate declaration state. That narrow approval calculation is not a general runtime merge. The scanner does not start servers, execute helpers, contact endpoints, query health, or resolve credentials. Plugin caches, hosted connectors, remote organization configuration, inline `OPENCODE_CONFIG_CONTENT`, and command-line-only inputs are omitted. Keep the JSON `coverage` object, additive `local_project_path`, and scope-qualified duplicate rows when automating against this inventory.
+`dev agent mcp list` reads documented static files for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. An absolute `CLAUDE_CONFIG_DIR` relocates Claude user sources; local Claude rows retain their project key, and documented user/project/local/managed project approvals annotate declaration state. That narrow approval calculation is not a general runtime merge. The scanner does not start servers, execute helpers, contact endpoints, query health, or resolve credentials. Plugin caches, hosted connectors, remote organization configuration, inline `OPENCODE_CONFIG_CONTENT`, and command-line-only inputs are omitted. Keep the JSON `coverage` object, additive `local_project_path`, and scope-qualified duplicate rows when automating against this inventory.
 
 ### Note search and filesystem durability vary by text and platform
 
@@ -102,19 +139,19 @@ Note writes sync the file and atomically rename it on every supported platform. 
 
 ### A merged pull request does not retire its worktree
 
-`dev done --pr` pushes and opens a pull/merge request, then leaves the task,
-runtime, and worktree unchanged because review owns integration. `dev flow` can
+`dev work done --pr` pushes and opens a pull/merge request, then leaves the task,
+runtime, and worktree unchanged because review owns integration. `dev repo flow` can
 run an explicit, run-local query for the exact head/base review and report only
 portable existence, open/draft/merged/closed state, URL, provider, and observation
 time. It does not query review decisions or checks, persist that evidence, or
-turn it into DONE. Current `dev sweep` does not query the forge either. Verify
+turn it into DONE. Current `dev work sweep` does not query the forge either. Verify
 integration with exact local ancestry and finish deliberately.
 
-`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete. Equal trees after a squash are not ancestry proof and do not waive retirement's containment checks.
+`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev work sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev work sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev work done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete. Equal trees after a squash are not ancestry proof and do not waive retirement's containment checks.
 
 ### Claude Workflow ephemeral cleanup is strict and version-sensitive
 
-`dev sweep --ephemeral-worktrees` supports the private layout verified with
+`dev work sweep --ephemeral-worktrees` supports the private layout verified with
 Claude Code 2.1.259: validated fixed-depth `wf_*.json`, matching worktree meta and
 journal paths, `runId`, `status`, `workflowProgress` agent state/isolation,
 `worktreePath`, `spawnedWithWorktree`, journal `started`/`result`, and same-ID
@@ -155,13 +192,13 @@ The schema-version-1 local join reports expected and live branches, checkout exi
 
 ### Prompt open uses the current terminal, not runtime placement
 
-`dev prompt open <recipe>` runs one configured child in the foreground of the
+`dev agent prompt open <recipe>` runs one configured child in the foreground of the
 terminal/TTY that invoked it. It does not create, focus, reuse, or inject into a
 Herdr, tmux, or Zellij pane. Inside Herdr it naturally remains in the current
 pane. To use another Herdr pane, create or focus it manually, enter the exact
 checkout, and run `prompt open` there.
 
-This is intentionally separate from `dev start --run`, whose dispatch target is
+This is intentionally separate from `dev work start --run`, whose dispatch target is
 only the exact root pane returned for a newly created first-class Herdr worktree.
 `prompt open` neither supplies a fresh runtime surface nor weakens that
 exact-pane proof. `run` is the non-interactive alternative; it receives no user
@@ -184,7 +221,7 @@ sessions remain blocked or unknown as their evidence requires.
 registration/path, status availability, clean Git state, no in-progress Git
 operation, known base and containment, task completion, artifact
 reachability/finalization, and runtime eligibility. A merged pull request is only
-evidence. Even an `eligible` audit is advisory; `dev retire` recollects and
+evidence. Even an `eligible` audit is advisory; `dev work retire` recollects and
 revalidates fresh state before any mutation. Neither recipe closes a runtime,
 changes Git/task state, deletes a branch/worktree, or grants permission to do so.
 
@@ -200,21 +237,21 @@ the requested checkout.
 
 ### Forge CLI sign-in is reported, never retried
 
-`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; `dev pr` fails only when no provider is authenticated at all. `dev doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
+`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; `dev pr` fails only when no provider is authenticated at all. `dev self doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
 
 Only a missing or rejected credential is reported this way. A rate limit, a permissions or scope failure, and a network error keep their full diagnostic text including the command that failed, because signing in again would not fix them. The original command and provider output remain in the wrapped error in every case.
 
 ### Agent session capture is reserved, not wired
 
-The task schema has an `AgentSession` field and Herdr inventory can expose live agent session IDs. The production start/park/resume path does not yet capture or attach that ID. Treat the field and live inventory as observability/future integration, not a promise that `dev resume` restores the coding-agent conversation.
+The task schema has an `AgentSession` field and Herdr inventory can expose live agent session IDs. The production start/park/resume path does not yet capture or attach that ID. Treat the field and live inventory as observability/future integration, not a promise that `dev work resume` restores the coding-agent conversation.
 
 ### Built-in forge cache TTL differs from generated config
 
-`dev config init` writes `forge.cache_ttl = "15m"`. With no config file, the current built-in `Forge.CacheTTL` zero value means an existing valid cache is not rejected by age; explicit `r` refresh still replaces it. Freshness also requires a source fingerprint matching the configured GH/GL hosts and Azure targets, so an endpoint change is never hidden by the zero TTL. Legacy source-less caches remain available only through explicit `--cached` and are reported stale. Run `config init` or set the TTL when freshness matters.
+`dev self config init` writes `forge.cache_ttl = "15m"`. With no config file, the current built-in `Forge.CacheTTL` zero value means an existing valid cache is not rejected by age; explicit `r` refresh still replaces it. Freshness also requires a source fingerprint matching the configured GH/GL hosts and Azure targets, so an endpoint change is never hidden by the zero TTL. Legacy source-less caches remain available only through explicit `--cached` and are reported stale. Run `config init` or set the TTL when freshness matters.
 
 Older generated configs may contain `forge.remote_limit = 100`. The field is
 still accepted, but complete forge inventories are now paginated and it no
-longer caps synchronization. `dev config init` no longer writes it. The
+longer caps synchronization. `dev self config init` no longer writes it. The
 `--limit` flag on `dev repo remote` limits rendered matches after the complete
 inventory has been searched.
 
@@ -249,7 +286,7 @@ diagnostics remain content-free.
 `dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository/task/worktree operations and the SSH host domain are native: static discovery, protected-DACL managed fragments, reparse-point rejection, native `ssh-keygen.exe`, Windows Job Object cancellation, and POSIX/Windows remote bootstrap are covered. Fleet can also target Windows OpenSSH through its encoded PowerShell launcher. What still differs:
 
 - Herdr supports native Windows. Runtime `auto` checks backend availability and falls back to `none` when no server is reachable; the `cd` directive and PowerShell wrapper still work. Fleet host connections and guarded repository workspace preparation have separate support boundaries below.
-- Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
+- Shell integration is `dev self shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
 - `dev fleet machine-id` can perform its content-free `_capability` probe, but native `fleet files` plan/apply payload helpers are denied before content is sent.
 - The complete Go suite is required on native `windows-latest`. CI discovers all packages and distributes CLI/taskflow test roots, examples and fuzz seeds across eight runners; a coverage audit rejects missing results, failures and timeouts. Dedicated SSH/fleet, cleanup, handoff and privacy gates remain required. Tests for explicitly unsupported POSIX mutation transports retain narrow platform boundaries and native Windows rejection checks. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
@@ -268,7 +305,7 @@ A direct task uses the canonical checkout and cannot go COLD, because cold clean
 
 ### Flow intentionally omits expert overrides
 
-`dev flow` offers normal managed lifecycle actions, exact unmanaged metadata-only
+`dev repo flow` offers normal managed lifecycle actions, exact unmanaged metadata-only
 Adopt/clean branch-preserving Remove, and explicit remote evidence. It does not
 offer dirty commit/discard, WIP, shared-writer, ownership takeover, force, unknown-
 runtime, or assume-no-runtime choices. A blocked plan shows remediation and the
@@ -296,47 +333,47 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev repo context --json` exposes additive schema-v1 local/remote evidence with source, age, freshness, completeness, null/error preservation, and scoped readiness; external probes happen only with `--refresh`. `dev status` reuses the cheap local readiness projection without network access.
 - `dev fleet machine-id` reports an observed UUID without changing configuration. `dev fleet files` is report-only by default, uses a separate `[local_files]` allowlist, negotiates downward-only limits before content, and requires explicit apply/replacement controls plus a matching target pin.
 
-- `dev wt open --no-focus` opens/reuses an existing registered checkout's runtime
+- `dev git worktree open --no-focus` opens/reuses an existing registered checkout's runtime
   without activation, attachment, or a shell `cd` handoff (including runtime
   `none`). It reports branch/path/backend/handle and the actual runtime surface,
   never creates/adopts/provisions work or launches an agent, and preserves open
   failures. Default `wt open` navigation is unchanged.
-- `dev start --focus` activates the runtime after non-JSON creation.
-- `dev start --run '<shell command>'` dispatches only to an exact root pane from
+- `dev work start --focus` activates the runtime after non-JSON creation.
+- `dev work start --run '<shell command>'` dispatches only to an exact root pane from
   a newly created first-class Herdr worktree. It is incompatible with `--json`,
   non-worktree modes, and non-Herdr runtimes, and does not wait for command exit.
-- TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
-- Preview-labelled `dev flow [repo]` is an independent full-screen TTY model. It resolves canonical/linked cwd to the exact surface, uses a picker outside Git, shows every registered worktree plus task-only records, and makes every mutation Enter-to-plan then approve. Apply revalidates task revision and exact repository/worktree/ref/runtime/artifact authority and retains partial step results. Local `r` is network-free; `R` explicitly selects fetch/query/both and keeps minimal review evidence run-local.
+- TUI navigation refuses to open a missing COLD checkout and directs the user to `dev work resume`.
+- Preview-labelled `dev repo flow [repo]` is an independent full-screen TTY model. It resolves canonical/linked cwd to the exact surface, uses a picker outside Git, shows every registered worktree plus task-only records, and makes every mutation Enter-to-plan then approve. Apply revalidates task revision and exact repository/worktree/ref/runtime/artifact authority and retains partial step results. Local `r` is network-free; `R` explicitly selects fetch/query/both and keeps minimal review evidence run-local.
 - `DEV_TUI_TRACE` starts at `cli.Execute`; it cannot include OS process loading. `tui.initial_view_returned` measures model construction, not renderer flush or physical terminal paint. Use it for same-profile comparisons rather than universal hardware/network guarantees.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
 
-- `dev done` opens an interactive finish wizard on a TTY when `--ff`/`--pr` are both omitted, analyzing a dirty checkout against the base (commit, discard, or cancel) instead of rejecting any uncommitted change outright; a non-interactive caller still passes an explicit `--dirty` policy and `--yes` for a destructive discard.
+- `dev work done` opens an interactive finish wizard on a TTY when `--ff`/`--pr` are both omitted, analyzing a dirty checkout against the base (commit, discard, or cancel) instead of rejecting any uncommitted change outright; a non-interactive caller still passes an explicit `--dirty` policy and `--yes` for a destructive discard.
 - Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
-- Explicit `dev done` records MERGED and keeps worktree/branch; any selected task-pane closures are separately reported. Non-interactive invocation never grants implicit program or pane-closure consent. Bare interactive completion may continue into a separate cleanup wizard: it previews runtime agents and can hand caller-owned Herdr cleanup to a newly created external coordinator, which still uses ordinary `dev retire` guards. Active agents and mixed-purpose workspaces remain blockers. `dev done --delete-branch` remains an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
+- Explicit `dev work done` records MERGED and keeps worktree/branch; any selected task-pane closures are separately reported. Non-interactive invocation never grants implicit program or pane-closure consent. Bare interactive completion may continue into a separate cleanup wizard: it previews runtime agents and can hand caller-owned Herdr cleanup to a newly created external coordinator, which still uses ordinary `dev work retire` guards. Active agents and mixed-purpose workspaces remain blockers. `dev work done --delete-branch` remains an error pointing at `dev work retire --delete-branch`, and `--keep-worktree` warns as a no-op.
 - Interactive FF preserves parent/canonical agents and other task workspaces; parent occupancy offers recheck/PR/cancel. Only exact idle/done task-worktree panes can close under final Apply. General foreground programs require separate FF file-change consent, and interactive done/retire requires `CLOSE <workspace-id>` for known program termination. Background jobs are unobserved; failed supported probes block. Programs/topology changing during confirmation require a refreshed preview. Old coordinator handoffs must be recreated. Existing unknown-runtime flags do not authorize known programs.
-- `dev retire --base <ref>` overrides task/path containment, resolving local branch, then remote-tracking branch, then commit. Apply re-resolves the same input; changed kind/ref/OID invalidates the plan. A recorded fork-point commit is never replaced by the default branch: unproved integration stays blocked with `--base <branch>` guidance. `done --merged --base-ref X` carries X through cleanup hints, wizard and external coordinator. Branch deletion still uses Git's own upstream/HEAD `branch -d` check; a non-HEAD base can leave partial completion with the branch and DONE task retained.
-- `dev sweep --base` forwards to DONE retirement; `--merged-worktrees` passes its verified base to managed tasks too. Retire/remove worktree-list authority includes only same-branch or equal/nested/containing paths, so an unrelated sibling removal no longer stales later plans in an approved `--apply --yes` batch. Target lock/HEAD or same-branch checkout changes still invalidate them.
-- `dev sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
-- `dev sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
-- `dev sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
+- `dev work retire --base <ref>` overrides task/path containment, resolving local branch, then remote-tracking branch, then commit. Apply re-resolves the same input; changed kind/ref/OID invalidates the plan. A recorded fork-point commit is never replaced by the default branch: unproved integration stays blocked with `--base <branch>` guidance. `done --merged --base-ref X` carries X through cleanup hints, wizard and external coordinator. Branch deletion still uses Git's own upstream/HEAD `branch -d` check; a non-HEAD base can leave partial completion with the branch and DONE task retained.
+- `dev work sweep --base` forwards to DONE retirement; `--merged-worktrees` passes its verified base to managed tasks too. Retire/remove worktree-list authority includes only same-branch or equal/nested/containing paths, so an unrelated sibling removal no longer stales later plans in an approved `--apply --yes` batch. Target lock/HEAD or same-branch checkout changes still invalidate them.
+- `dev work sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
+- `dev work sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
+- `dev work sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
 - An unknown command is reported instead of discarded. `dev` silences cobra's own error printing and previously also skipped printing anything whose message began with `unknown command`, so a mistyped command produced no output at all on either stream. The message, cobra's "Did you mean this?" suggestions, and a pointer to `--help` are now printed to stderr with exit status 1.
-- A stray argument to a command family is an error rather than a silent help render. `dev wt bogus` used to print `dev wt` help and exit 0 because a family has no `Run` of its own; every family node now reports the unknown subcommand and exits 1, while a bare family still prints its help and exits 0.
+- A stray argument to a command family is an error rather than a silent help render. `dev git worktree bogus` used to print `dev git worktree` help and exit 0 because a family has no `Run` of its own; every family node now reports the unknown subcommand and exits 1, while a bare family still prints its help and exits 0.
 - Argument-count and flag errors print the failing command's usage block. `--color` still governs whether that block is colorized.
 - Each command family's help carries an ASCII orientation diagram and a `See also: dev help <topic>` pointer, and `dev help <command>` resolves a command name or alias to its topic, so `dev help wt` reaches the worktrees page.
 - Semantic color covers every human-readable surface, including the interactive dashboard: `dev --color never`, `NO_COLOR` and `TERM=dumb` now disable dashboard color too, which they previously did not.
-- `dev sweep` reaps a task whose repository directory no longer exists. Such a record was unreachable by every command in the binary: `done`, `resume`, `park` and `retire` all resolve the repository first, the dead-branch rule excludes direct mode, and the stale-worktree rule requires a recorded worktree path. A live runtime session rules the suggestion out, and reaping removes only dev's record of intent.
-- `dev sweep` reports a task-recorded checkout that exists but Git does not register and that holds nothing but agent artifact directories. Removal is offered only when every file inside is byte-identical to one already in the repository; anything else is reported as salvage work and is never removed, including under `--apply`.
-- `dev sweep` acts on a cold task whose worktree is still on disk. Inventory has always computed that drift for `dev ls` and the dashboard, but sweep never consulted it, so it was displayed and not actionable.
-- `dev retire <path>` reaps the matching task record. Only the by-task form set the task identity, so retiring the same checkout by path left the record behind; the DONE-state and identity checks are unchanged.
-- `dev version` reports whether the running build is a published release, and `dev doctor` carries the same line plus the install owner, invoked/resolved executable path, and warnings for distinct `dev` copies on `PATH`. Nothing in the tool answered "am I current?" before, and `go install ...@latest` resolves to the newest tag, so an untagged feature was invisible to anyone installing it.
+- `dev work sweep` reaps a task whose repository directory no longer exists. Such a record was unreachable by every command in the binary: `done`, `resume`, `park` and `retire` all resolve the repository first, the dead-branch rule excludes direct mode, and the stale-worktree rule requires a recorded worktree path. A live runtime session rules the suggestion out, and reaping removes only dev's record of intent.
+- `dev work sweep` reports a task-recorded checkout that exists but Git does not register and that holds nothing but agent artifact directories. Removal is offered only when every file inside is byte-identical to one already in the repository; anything else is reported as salvage work and is never removed, including under `--apply`.
+- `dev work sweep` acts on a cold task whose worktree is still on disk. Inventory has always computed that drift for `dev work list` and the dashboard, but sweep never consulted it, so it was displayed and not actionable.
+- `dev work retire <path>` reaps the matching task record. Only the by-task form set the task identity, so retiring the same checkout by path left the record behind; the DONE-state and identity checks are unchanged.
+- `dev self version` reports whether the running build is a published release, and `dev self doctor` carries the same line plus the install owner, invoked/resolved executable path, and warnings for distinct `dev` copies on `PATH`. Nothing in the tool answered "am I current?" before, and `go install ...@latest` resolves to the newest tag, so an untagged feature was invisible to anyone installing it.
 - A release publishes platform archives and `SHA256SUMS` and takes its notes from `CHANGELOG.md`. Earlier releases published a GitHub release object and nothing else, so their assets are absent by construction.
 - A release publishes Windows `.zip` archives alongside the Unix `.tar.gz` set and refreshes the in-repo Scoop manifest (also pushed to its bucket when configured). The `daviddwlee84/homebrew-tap` repository independently synchronizes stable binary formulas hourly or by manual dispatch, using its own token. It validates checksums and formula installation before committing; a failed tool keeps its previous formula. Retry with `gh workflow run sync.yml --repo daviddwlee84/homebrew-tap -f tool=dev-cli`. Stable Homebrew installs use prebuilt binaries; `--HEAD` still builds from source. Application releases no longer write the tap or need a tap-writing token.
-- `dev upgrade` checks the exact release's asset inventory. A standalone install downloads its platform archive and verifies `SHA256SUMS`; if no asset exists for that platform, it offers a native source build of the exact tag. New releases include a compact `dev-cli_<tag>_source.tar.gz` verified against `SHA256SUMS`, excluding conversation history; older releases use Go's configured module verification and can require a much larger download. This source fallback and compact archive are available starting with v0.2.35. Network errors, missing checksum entries, and checksum mismatches stop the upgrade. Source builds use the installed Go toolchain, two workers and a 20-minute build limit; a successful candidate must report the expected version before replacement. `--check` never compiles and missing tools are reported before confirmation. Homebrew, Scoop and `go install` ownership still delegates to that manager. Replacement uses atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run); a changed target aborts replacement.
+- `dev self upgrade` checks the exact release's asset inventory. A standalone install downloads its platform archive and verifies `SHA256SUMS`; if no asset exists for that platform, it offers a native source build of the exact tag. New releases include a compact `dev-cli_<tag>_source.tar.gz` verified against `SHA256SUMS`, excluding conversation history; older releases use Go's configured module verification and can require a much larger download. This source fallback and compact archive are available starting with v0.2.35. Network errors, missing checksum entries, and checksum mismatches stop the upgrade. Source builds use the installed Go toolchain, two workers and a 20-minute build limit; a successful candidate must report the expected version before replacement. `--check` never compiles and missing tools are reported before confirmation. Homebrew, Scoop and `go install` ownership still delegates to that manager. Replacement uses atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run); a changed target aborts replacement.
 - Android/Termux currently has no published binary. Use `pkg install golang clang git` for native build dependencies. Source upgrades set `GOOS=android`, enable CGO with Termux Clang and disable automatic Go toolchain downloads. Linux archives can fail on Android syscalls and are never substituted. Go must meet the selected release's `go.mod` requirement. An older binary without source fallback needs a one-time native build of a pinned, checksummed source archive into a staging directory, version verification and replacement of the standalone executable; see the repository README's Termux recovery example.
 - Native Termux SSH setup and discovery use the verified private home under `/data/data/com.termux/files/home` or `/data/user/<Android-user>/com.termux/files/home`. Exact system/app ownership and directory identity are revalidated; descendant symlinks and unsafe user paths remain blocked. Android SELinux app-data labels are compared without relabeling, encrypted files retain their inherited metadata, and new files use `RENAME_NOREPLACE` because app hard links are denied. Shared storage and other app-data layouts remain outside this support. Native tests cover first configuration, updates, key generation, cache persistence and metadata mismatch rejection; desktop tests retain hard-link attack coverage. See [Android's app sandbox](https://source.android.com/docs/security/app-sandbox).
 - On macOS, guarded configedit/SSH staged replacements recognize only the kernel-managed `com.apple.provenance` tag (11 bytes, first byte `0x01`). The kernel assigns each new file the writer's provenance; dev never copies or requires the source value on a replacement, but still observes it on the same file for stale detection. Other attributes and unrecognized provenance values retain strict checks. This covers hygiene redact/repair-encoding/restore and SSH init/format; apply/recovery errors retain the underlying cause. This macOS exception does not weaken Android's inherited-label equality checks.
-- Since v0.2.23, `dev upgrade` refreshes an existing default bundled skill through the updated executable. `dev doctor` and `skill install --check` expose drift; `skill uninstall` removes only unchanged manifest-owned files and matching agent links. Legacy and direct package-manager upgrades need an explicit `skill install` once; custom directories remain explicit. See [skills management](../guides/skills-management.md#bundled-dev-cli-skill-lifecycle).
+- Since v0.2.23, `dev self upgrade` refreshes an existing default bundled skill through the updated executable. `dev self doctor` and `skill install --check` expose drift; `skill uninstall` removes only unchanged manifest-owned files and matching agent links. Legacy and direct package-manager upgrades need an explicit `skill install` once; custom directories remain explicit. See [skills management](../guides/skills-management.md#bundled-dev-cli-skill-lifecycle).
 - An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. For the TUI, a stale-cache background refresh starts only after the initial view returns. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
 ## Claude Code status matrix
@@ -415,7 +452,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Local triage compatibility
 
-`dev triage` is an additive interface with its own schema-v1 JSON report. Its guarded synchronization actions preserve task states, and its cleanup uses a stricter clone-bound ignored-directory guard. Existing sweep, flow, expert CLI flags, and `dev ls --json` retain their contracts. See [local triage](../guides/local-triage.md).
+`dev triage` is an additive interface with its own schema-v1 JSON report. Its guarded synchronization actions preserve task states, and its cleanup uses a stricter clone-bound ignored-directory guard. Existing sweep, flow, expert CLI flags, and `dev work list --json` retain their contracts. See [local triage](../guides/local-triage.md).
 
 ## Dashboard navigation and organizer entry
 
@@ -478,7 +515,7 @@ See [contextual Help](../guides/tui-repos-bootstrap.md#contextual-help-v0224).
 
 The installed `dev-cli` entry is intentionally compact; detailed references
 remain in the bundle and are read only for matching advanced operations.
-`dev --skill` and `dev skill print` still output the exact installed `SKILL.md`,
+`dev --skill` and `dev agent skill print` still output the exact installed `SKILL.md`,
 preserving dotfiles-installer compatibility. Use leaf `--help` for syntax,
 `dev help <topic>` for workflows and conditional references for coordination
 details. Existing installation, ownership checks and refresh rules are unchanged.
@@ -667,7 +704,7 @@ opaque route import, cycles and unsupported selected-key flows stay rejected.
 
 ## Repository hygiene
 
-`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+`dev git hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
 policies, private local identity imports and reviewed text replacement/recovery on
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.
@@ -681,7 +718,7 @@ carry encoding diagnostics. Repair does not claim a successful secret scan.
 
 ### Hygiene summary JSON contract
 
-`dev hygiene report --json` emits `kind: "hygiene_summary"` with
+`dev git hygiene report --json` emits `kind: "hygiene_summary"` with
 `schema_version: 1`. Prefer it to parsing scan output or human tables. Existing
 scan finding fields stay unchanged; the additive optional `value_id` is keyed by
 private repo state and category/rule/value, allowing same-value aggregation
@@ -731,7 +768,7 @@ Only masks are public: secrets retain first/last two characters plus length
 (length only below 12), known private rules `[private:N]`, email
 `a•••@d•••.tld`, IPv4 `a.b.•.•`, IPv6 `first:•••`, home path `Users/x•••`.
 Raw values/context stay in a private 0600 `<report-id>.values.review.txt` outside
-Git, never stdout/JSON/scan records. `dev hygiene review-path <plan-or-report-id>`
+Git, never stdout/JSON/scan records. `dev git hygiene review-path <plan-or-report-id>`
 prints the private location only; never paste its contents into chat, Git or CI.
 Count and byte bounds limit capture; oversized values are omitted and set
 `values_truncated`. A sidecar failure saves a partial report with a

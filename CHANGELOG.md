@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-24
+
+### Added
+
+- Try graduation opens a shared terminal/dashboard wizard for the project name,
+  category and local/add-URL/create-remote choice, then previews and confirms the
+  move. `--remote-url`, `--forge`, `--namespace`, `--visibility` and `--yes` also
+  support direct scripts; dry-run stays promptless and never publishes.
+- Successful local graduation remembers an optional project name for later
+  demote/regraduate cycles. Existing records derive a valid legacy destination
+  basename without read-time migration; an explicit name always wins.
+
+### Changed
+
+- Existing remotes are preserved during graduation, including local renames.
+  New remote creation defaults to private with push, while adding an existing
+  URL defaults to no push; explicit push flags remain authoritative.
+- Remote add/create/push failures return nonzero and retain the completed local
+  graduation and any remote effects, without automatic retries or rollback.
+  Publication revalidates the checkout and reviewed branch/commit before each
+  stage; changed authority after remote creation retains the remote and skips push.
+
+### Fixed
+
+- Detect actual terminals instead of treating every character device as a TTY,
+  so redirected commands, including graduation with `/dev/null` input, remain
+  noninteractive instead of entering a wizard and canceling at EOF.
+- Decode quoted and escaped Git configuration values so local remote URLs,
+  including Windows paths, are preserved correctly in catalog metadata.
+
+## [0.3.0] - 2026-09-24
+
+### Added
+
+- `dev help --tree` exposes canonical command families, with a two-level default,
+  `--depth 0` for the full tree, optional command-path focus and `--aliases`.
+- `dev tries demote` returns a previously graduated Try to its original or an
+  explicitly selected safe Try path, preserving current files, Git history,
+  remotes and catalog metadata. Dry-run and the reviewed REPOS action share
+  guarded move planning and recovery.
+
+### Changed
+
+- Root help and completion focus on 17 primary entrypoints. Work lifecycle,
+  repository helpers, Git support, agent integration, activity and installation
+  commands have canonical grouped paths; all prior top-level shortcuts retain
+  their semantics, flags, output and exit behavior without deprecation warnings.
+  `try` remains create-or-open and `gist` remains GitHub-only.
+- Authored help, bundled skill and paired English/Traditional Chinese guides use
+  the canonical paths, with a v0.3 migration map and unchanged structured-output
+  contracts. Shell integration supports both grouped paths and shortcuts.
+
+### Fixed
+
+- Dashboard skill installation and updates acquire their provider lease only
+  when execution begins, so discarded or canceled handoffs do not retain a lock.
+
 ## [0.2.44] - 2026-09-23
 
 ### Added
@@ -1417,7 +1474,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.44...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.44...v0.3.0
 [0.2.44]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.43...v0.2.44
 [0.2.43]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.42...v0.2.43
 [0.2.42]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.41...v0.2.42

@@ -71,6 +71,7 @@ plugins:
             Gists and Snippets: Gists 與 Snippets
             Machine Summary: 機器整體摘要
             Development Journal: 開發日誌
+            Try Graduation: Try 畢業
             TUI, Repositories, Quick Notes, and Bootstrap: TUI、Repository、Quick Notes 與 Bootstrap
             Git and GitHub: Git 與 GitHub
             GitHub Flow: GitHub Flow
@@ -85,6 +86,7 @@ plugins:
             Hooks, Skills, Plugins, and Agent SDK: Hooks、Skills、Plugins 與 Agent SDK
             Reference: 參考資料
             Commands and Configuration: 命令與設定
+            Command Navigation in v0.3: v0.3 命令導覽
             Compatibility and Known Limitations: 相容性與已知限制
             Sources and Freshness: 來源與時效
             Notes: 筆記
@@ -139,6 +141,7 @@ nav:
       - Local Work Triage: guides/local-triage.md
       - Machine Summary: guides/machine-summary.md
       - Development Journal: guides/dev-journal.md
+      - Try Graduation: guides/try-graduation.md
       - Worktrees and Provisioning: guides/worktrees-provisioning.md
       - Submodule Workspaces: guides/submodule-workspaces.md
       - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md
@@ -169,6 +172,7 @@ nav:
       - Hooks, Skills, Plugins, and Agent SDK: claude/extensions-agent-sdk.md
   - Reference:
       - Commands and Configuration: reference/commands-config.md
+      - Command Navigation in v0.3: reference/cli-v0.3.md
       - Compatibility and Known Limitations: reference/compatibility.md
       - Manual Hygiene Dogfood: reference/hygiene-dogfood.md
       - Sources and Freshness: reference/sources-freshness.md

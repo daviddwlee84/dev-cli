@@ -250,7 +250,6 @@ const (
 	TryReactivate TryAction = "reactivate"
 	TryArchive    TryAction = "archive"
 	TryRestore    TryAction = "restore"
-	TryGraduate   TryAction = "graduate"
 )
 
 // TryRequest is the normalized payload produced by a TUI overlay.
@@ -258,13 +257,12 @@ type TryRequest struct {
 	Action TryAction
 	ID     string
 
-	Name     string
-	Clone    string
-	NoGit    bool
-	Tags     []string
-	Note     string
-	Category string
-	To       string
+	Name  string
+	Clone string
+	NoGit bool
+	Tags  []string
+	Note  string
+	To    string
 }
 
 // TryActionResult tells the model what local snapshots need refreshing. CD and

@@ -49,6 +49,13 @@ file identity, and interrupted-publication recovery tests. Do not substitute
 Unix permission bits, automatic junctions/copies, or elevation for those proofs.
 See [interoperability plan](backlog/agent-config-interop-plan.md).
 
+### P? · M — Multi-remote topology and mirror recovery targets
+Evaluate explicit fetch/push roles, mirror synchronization and recovery-target
+selection for repositories with multiple remotes. Existing remote inventory is
+not a mirror or verified backup policy. Preserve the independent P1 backup and
+local-eviction work; no automated deletion or mirror writes are included.
+See [multi-remote and mirror research](backlog/multi-remote-mirror-recovery.md).
+
 ### P1 · L — Verified backup receipts and safe local eviction
 `dev triage` now supplies local recovery inventory and guarded synchronization/linked-checkout batches; whole-clone eviction remains pending.
 Explicit Try disposal now offers system Trash and separately approved permanent

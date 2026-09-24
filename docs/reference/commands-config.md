@@ -2,12 +2,12 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-18
+verified_on: 2026-09-24
 ---
 
 # Commands and configuration
 
-`dev submodule add [source] [path]` and `dev repo add-as-submodule` share
+`dev git submodule add [source] [path]` and `dev repo add-as-submodule` share
 `--parent`, `--checkout=pinned|default-branch`, pinned-only `--ref`,
 `--submodules=recursive|none`, `--dry-run`, `--yes` and `--json`. Addition stages
 only its metadata/gitlink and emits partial-result phases on failure; see
@@ -15,32 +15,26 @@ only its metadata/gitlink and emits partial-result phases on failure; see
 
 Submodule configuration is shared by clone and worktree acquisition: `[submodules] init = "recursive"` (or `"none"`) and `develop = ["path"]`, with project overrides in `.dev-cli/config.toml`. CLI uses `--submodules`, repeatable `start --submodule` / `--submodule-base`, and explicit cleanup `--recursive`. See [Submodule workspaces](../guides/submodule-workspaces.md).
 
-Use the authored map for intent and the embedded generated reference for exact flags. The generated block comes from the binary's Cobra command tree and is checked by `dev skill sync --check`.
+Use the authored map for intent and the embedded generated reference for exact flags. The generated block comes from the binary's Cobra command tree and is checked by `dev agent skill sync --check`.
 
 ## Command map
 
+The root lists 17 primary entrypoints. Existing top-level commands remain
+permanent shortcuts with compatible arguments, output and completion. Explore
+`dev help --tree`, use `--depth 0` for every level, add a command path to focus,
+and add `--aliases` to reveal shortcuts. See the [v0.3 migration guide](cli-v0.3.md).
+
 | Goal | Commands |
 |---|---|
-| task lifecycle | `start`, `park`, `resume`, `done`, `retire`, `sweep`, `ls`, `status` |
-| agent artifacts | `prepare`, `artifact status/setup/archive/find/migrate/sync/backup`, `artifact finalize/list/discard` |
-| guarded Git transactions | `git uncommit`, `git recommit`, `git pull-rebase`, `git amend-all`, `git setup` |
-| linked worktrees | `wt list`, `wt create`, `wt open`, `wt rm`, `wt plan`, `wt provision` |
-| repositories/remotes | `repo list`, `repo context`, `repo new`/`repo create`, `repo clone`, `repo setup`, `repo open`, `repo sync`, `repo remote`, `repo mark` |
-| repository quick notes | `note add`, `note list`, `note show`, `note search`, `note edit`, `note delete`, `note path`, `note reindex` |
-| machine inventory | `bootstrap`, `adopt`, `doctor` |
-| experiments | `try`, `tries …`, `graduate` |
-| terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
-| configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor/derive`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh connect`, `ssh probe`, `ssh remove` |
-| dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
-| remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
-| pull-request inventory | `pr list` |
-| prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
-| agent skills | `skill list`, `skill manage`, `skill add`, `skill update`, `skill install`, `skill uninstall`, `skill sync`, `skill print` |
-| static MCP declarations | `mcp list` |
-| generated policy/assets | `gitignore`, `skill install/sync` |
-| activity/data | `summary`, `journal`, `stats …`, `cache …` |
-| help | `help [topic]` |
+| tracked work | `work list/start/park/resume/done/adopt/retire/sweep` |
+| repositories/remotes | `repo list/context/new/clone/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| experiments | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
+| Git and checkout support | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
+| coding-agent support | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
+| activity | `activity journal`, `activity stats …` |
+| dev installation | `self config …`, `self cache …`, `self doctor`, `self version`, `self upgrade`, `self completion`, `self shell-init`, `self feedback …` |
+| independent entrypoints | `snippet`, `ssh`, `fleet`, `dotfile`, `pr`, `summary`, `triage`, `status`, `tui`, `help` |
+
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.
 
@@ -53,21 +47,32 @@ Manual uses the same embedded topics and workflow TL;DR as CLI help.
 See [contextual Help](../guides/tui-repos-bootstrap.md#contextual-help-v0224).
 
 The bundled skill has a small entry covering core purpose, essential boundaries
-and conditional links to advanced references. `dev --skill`, `dev skill print`
-and the `SKILL.md` written by `dev skill install` remain byte-identical. Installing
+and conditional links to advanced references. `dev --skill`, `dev agent skill print`
+and the `SKILL.md` written by `dev agent skill install` remain byte-identical. Installing
 the bundle keeps the detailed references available without requiring an agent to
 preload them. Load only the matching reference for advanced coordination,
 retirement, provisioning, SSH or transfer work.
 
-`dev --skill` when true, `dev skill print` and `dev help` print embedded content
+`dev --skill` when true, `dev agent skill print` and `dev help` print embedded content
 without loading application config, checking releases or deleting stale Windows
 upgrade binaries. Invalid arguments, flags and color values still fail normally;
 `--skill=false` retains ordinary startup. No CLI flags or JSON fields are changed.
 
+## Graduate interface (v0.3.1)
+
+`dev tries graduate [try]` keeps `--name` and `--category`; it adds `--yes`/`-y`,
+`--remote-url`, `--forge auto|github|gitlab|none`, `--namespace` and
+`--visibility private|public|internal`. Existing `--remote`, `--private` and
+`--push` stay supported. TTY runs use a reviewed wizard unless `--yes` or
+`--dry-run` selects the direct path; non-TTY runs are direct. See
+[Try graduation](../guides/try-graduation.md) for remote-preservation rules,
+mode-specific defaults and partial failures. Try JSON adds the optional
+`experiment.graduated_name`; existing schema-1 fields are unchanged.
+
 ## High-value structured interfaces
 
 ```bash
-dev ls --json
+dev work list --json
 dev repo list --json
 dev repo context [repo] --json
 dev repo remote --json
@@ -76,9 +81,9 @@ dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
-dev note list [repo] --json
-dev note search <query> --json
-dev note show <note-id> --json
+dev repo note list [repo] --json
+dev repo note search <query> --json
+dev repo note show <note-id> --json
 dev ssh init --json
 dev ssh list --json
 dev ssh list --format tsv
@@ -86,21 +91,21 @@ dev ssh show <alias> --json
 dev ssh setup <alias> --dry-run --json
 dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
-dev skill list --all --json
-dev mcp list --all --json
+dev agent skill list --all --json
+dev agent mcp list --all --json
 dev pr list --json
-dev prompt list --json
-dev prompt render <pr-triage|session-close|workspace-closeout>
-dev sweep --ephemeral-worktrees --json
-dev hygiene report --json
-dev bootstrap --json
+dev agent prompt list --json
+dev agent prompt render <pr-triage|session-close|workspace-closeout>
+dev work sweep --ephemeral-worktrees --json
+dev git hygiene report --json
+dev repo bootstrap --json
 ```
 
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract. `repo context --json` is an additive schema-v1 report: unavailable facts remain null/error entries with explicit provenance instead of becoming zero values. `fleet files --json` is content-free and never includes file hashes or bodies.
 
-`dev skill list --json` keeps its existing array and keys while adding repository, checkout, installation, presence/integrity, registry, and lock metadata. `dev mcp list --json` begins with a `servers`/`diagnostics`/`coverage` envelope; exact Claude local rows add `local_project_path`. Every server field is already sanitized. Declaration state may include Claude's documented project approvals, but must not be interpreted as health or a generally effective merged configuration.
+`dev agent skill list --json` keeps its existing array and keys while adding repository, checkout, installation, presence/integrity, registry, and lock metadata. `dev agent mcp list --json` begins with a `servers`/`diagnostics`/`coverage` envelope; exact Claude local rows add `local_project_path`. Every server field is already sanitized. Declaration state may include Claude's documented project approvals, but must not be interpreted as health or a generally effective merged configuration.
 
-Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
+Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev repo note list --json` and `dev repo note search --json` return arrays of complete note records, while `dev repo note show --json` returns one complete record.
 
 ## SSH host and fleet contracts
 
@@ -191,7 +196,7 @@ Schema 1 is add-only.
 
 ### Ephemeral-worktree report and apply contract
 
-`dev sweep --ephemeral-worktrees --json` emits one object with
+`dev work sweep --ephemeral-worktrees --json` emits one object with
 `schema_version: 1`, generation time, canonical repository/common-dir identity,
 provider inactivity threshold, explicit-base/branch-deletion request, sorted
 capabilities/diagnostics/candidates, and summary counts. Candidates contain only
@@ -225,16 +230,16 @@ failure after worktree removal is partial and retains the branch.
 
 ### Prompt recipes and structured behavior
 
-`dev prompt list --json` returns sorted recipe metadata (`name`, `summary`,
+`dev agent prompt list --json` returns sorted recipe metadata (`name`, `summary`,
 `scope`, optional `target_usage`, and `context_version`). The three recipes are
 `pr-triage`, `session-close`, and `workspace-closeout`.
 
-`dev prompt render <recipe>` prints a Markdown prompt whose JSON envelope has
+`dev agent prompt render <recipe>` prints a Markdown prompt whose JSON envelope has
 `schema_version: 1`, recipe/context versions, generation time, host, scope,
 optional target, capabilities, warnings, and recipe context. Collection is
 read-only and missing evidence stays explicit.
 
-`dev prompt agents [--json]` is the sorted, redacted profile inventory. Human
+`dev agent prompt agents [--json]` is the sorted, redacted profile inventory. Human
 output has `PROFILE DEFAULT RUN OPEN DESCRIPTION`; direct launchers expose only
 the executable basename, shell launchers say `shell`, and unavailable modes say
 `—`. Every JSON object has `name`, `description`, `default`, and nested
@@ -244,14 +249,14 @@ environment, prompt text, or config path.
 
 | Command | Process contract |
 |---|---|
-| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile and its run launcher before collection; then run one batch process with no user stdin, stdin/file/argv prompt transport, and a 10-minute default timeout. |
-| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile/open launcher and check the non-dry TTY before collection; then run one foreground process with file/argv prompt transport and no default timeout. |
+| `dev agent prompt run <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile and its run launcher before collection; then run one batch process with no user stdin, stdin/file/argv prompt transport, and a 10-minute default timeout. |
+| `dev agent prompt open <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile/open launcher and check the non-dry TTY before collection; then run one foreground process with file/argv prompt transport and no default timeout. |
 
 `--agent` wins, otherwise the unique configured default wins, otherwise the sole
 agent wins. Multiple agents with no default fail as ambiguous. Selection is not
 mode-local: a selected profile missing the requested mode fails without using a
 different profile. Diagnostics list sorted mode-capable profiles and point to
-`dev prompt agents`. Dynamic completion loads parsed `--config`, filters names by
+`dev agent prompt agents`. Dynamic completion loads parsed `--config`, filters names by
 run/open capability, sanitizes descriptions through the shared completion
 format, and degrades invalid config to no candidates plus no file completion.
 Dry-run shows the resolved mode, cwd, transport, timeout, safe command markers,
@@ -433,8 +438,8 @@ change the parent shell. `open` opens the configured Herdr/tmux/Zellij runtime
 and falls back to `cd` when runtime is `none`. `start` continues into the
 existing task wizard with the repository fixed, and is unavailable when setup
 leaves uncommitted files that a new worktree would omit. Neither repository
-bootstrap nor a default `dev start` launches a coding agent. Explicit
-worktree-mode `dev start --run '<shell command>'` dispatches one command only
+bootstrap nor a default `dev work start` launches a coding agent. Explicit
+worktree-mode `dev work start --run '<shell command>'` dispatches one command only
 when a newly created first-class Herdr worktree returns its exact root pane;
 `--focus` independently controls navigation afterward.
 
@@ -444,9 +449,9 @@ cursor, and Esc/Ctrl-C cancellation work as terminal actions rather than being
 inserted as raw escape bytes. Buffered and piped non-TTY input retains its
 line-oriented behavior.
 
-## `dev flow [repo]` preview
+## `dev repo flow [repo]` preview
 
-`dev flow [repo]` is an independent full-screen command for interactive TTYs;
+`dev repo flow [repo]` is an independent full-screen command for interactive TTYs;
 it has no JSON or non-interactive contract. With no `repo`, a canonical or
 linked checkout opens the repository identified by the same Git common
 directory and focuses the exact current surface. Outside Git it opens an
@@ -461,9 +466,9 @@ remains unobserved and does not expose expert overrides such as
 `--assume-no-runtime`. See [Repository lifecycle flow](../guides/repository-flow.md)
 for keys, row kinds, partial ledgers, and the raw-tool escape boundary.
 
-## `dev done` finish flags
+## `dev work done` finish flags
 
-`dev done` for branch/worktree tasks integrates through exactly one of `--ff`
+`dev work done` for branch/worktree tasks integrates through exactly one of `--ff`
 (rebase onto the base, then fast-forward it), `--pr` (push and open a pull/merge
 request), or `--merged` (verify external integration against `--base-ref`).
 Omitting an integration choice opens the interactive finish wizard on a TTY —
@@ -484,13 +489,13 @@ non-interactive `--dirty discard` and otherwise skips the interactive
 confirmation step. `--push` pushes the branch or base selected by the
 integration mode. Successful local or externally verified integration records
 DONE/MERGED while retaining the worktree and branch for a
-separate `dev retire`; `--keep-worktree` remains only as a no-op compatibility
+separate `dev work retire`; `--keep-worktree` remains only as a no-op compatibility
 warning, while `--delete-branch` fails with guidance to use
-`dev retire --delete-branch`. `--merged` can use
+`dev work retire --delete-branch`. `--merged` can use
 `--confirm-squash <merge-commit>` as explicit operator attestation for a squash
 result; provider status never implies that attestation.
 
-For a managed worktree, bare interactive `dev done` adds a post-MERGED cleanup
+For a managed worktree, bare interactive `dev work done` adds a post-MERGED cleanup
 choice: keep, retire while keeping the branch, or retire and delete the
 contained branch. It previews covering runtime panes and agent states first.
 Caller-owned Herdr workspaces are handed to a fresh external coordinator;
@@ -504,30 +509,30 @@ stash+restore, typed `DROP`, or cancel. See [retirement scope](../guides/agent-s
 
 ## Retirement containment flags
 
-`dev retire [task-or-worktree] --base <ref>` overrides the containment target:
+`dev work retire [task-or-worktree] --base <ref>` overrides the containment target:
 local branch, then remote-tracking ref (such as `origin/main`), then commit.
 Apply re-resolves the same input and rejects a changed kind/ref/OID. Without an
 override, a task's recorded fork-point commit is retained; if it cannot prove
 integration, retirement stays blocked and requests `--base <branch>`.
-`dev sweep --base` forwards the override to DONE tasks, and `--merged-worktrees`
+`dev work sweep --base` forwards the override to DONE tasks, and `--merged-worktrees`
 passes its verified base to managed tasks too. Unrelated sibling removals no
 longer invalidate the remainder of an approved sweep batch.
 
 `done --merged --base-ref X` carries X into cleanup hints, the wizard and external
-coordinator handoff (`dev retire --base X <task>`). Optional `--delete-branch`
+coordinator handoff (`dev work retire --base X <task>`). Optional `--delete-branch`
 (`sweep --delete-branches`) still uses `git branch -d`: Git checks upstream/HEAD,
 not `--base`, so a non-HEAD base may produce partial completion after removal.
 
 ## Configuration
 
 ```bash
-dev config init
-dev config show
-dev config path
-dev config scaffolds init
-dev config scaffolds show
-dev config scaffolds path
-dev config scaffolds edit
+dev self config init
+dev self config show
+dev self config path
+dev self config scaffolds init
+dev self config scaffolds show
+dev self config scaffolds path
+dev self config scaffolds edit
 
 dev fleet config init      # user-authored primary remotes.toml
 dev fleet config show      # effective primary + generated remotes.d merge
@@ -754,15 +759,15 @@ Every human-readable surface applies semantic ANSI color through a small set of 
 | Skill update | `current` | `update` | `missing`, `failed` |
 | Artifact intent | `finalized` | `armed`, `finalizing` | `failed` |
 
-`dev journal` and `dev summary` emit Markdown, so their headings and fenced code blocks are styled the same way `dev help <topic>` styles a quick-reference page. In command help, only the names you can type — command names and flag specs — are colored; descriptions stay plain, and the column alignment cobra computes is unaffected because a terminal gives an escape sequence no width.
+`dev activity journal` and `dev summary` emit Markdown, so their headings and fenced code blocks are styled the same way `dev help <topic>` styles a quick-reference page. In command help, only the names you can type — command names and flag specs — are colored; descriptions stay plain, and the column alignment cobra computes is unaffected because a terminal gives an escape sequence no width.
 
 Control it with the global `--color <auto|always|never>` flag (default `auto`). `auto` disables color when output is not attached to a terminal, when `NO_COLOR` is set to any non-empty value, or when `TERM=dumb`. The setting reaches the interactive dashboard as well, so `dev --color never` renders it without color. `--json` output is never colored regardless of mode. There is no config-file field for color — `--color` and the environment are the only controls, so piping `dev` never requires `--color never` to stay clean.
 
 ## Shell integration
 
 ```bash
-eval "$(dev shell-init zsh)"
-dev shell-init fish | source
+eval "$(dev self shell-init zsh)"
+dev self shell-init fish | source
 ```
 
 The trusted `shell-init` output defines a wrapper because a child process cannot change its parent's working directory. For navigation and post-MERGED retirement, that wrapper reads a NUL-terminated path plus a narrow fixed retire action from private child-only file descriptors and calls `builtin cd` before invoking the exact task ID. It does not evaluate ordinary `dev` output or arbitrary shell code.
@@ -776,10 +781,10 @@ The following content is included from `internal/skill/dev-cli/references/comman
 ## Keeping it current
 
 ```bash
-go run ./cmd/dev skill sync --check
+go run ./cmd/dev agent skill sync --check
 ```
 
-If command help changes, regenerate through `dev skill sync`; do not hand-edit the generated block.
+If command help changes, regenerate through `dev agent skill sync`; do not hand-edit the generated block.
 
 ## Sources
 
@@ -803,7 +808,7 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 
 ## Agent artifact transfers
 
-Use `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+Use `dev agent skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
 for a reviewed per-skill link. `--mode copy` creates independent content and
 `--mode move` publishes the destination before source cleanup. Select exact
 checkouts with `--from-repo`/`--to-repo`; apply with `transfer apply --plan <id>`.
@@ -811,15 +816,15 @@ checkouts with `--from-repo`/`--to-repo`; apply with `transfer apply --plan <id>
 local ledger and create guarded follow-up plans. Private recovery content is
 stored under the configured state directory and is omitted from JSON reports.
 
-For upstream reuse across repositories, run `dev skill transfer prepare <name>`
+For upstream reuse across repositories, run `dev agent skill transfer prepare <name>`
 with the source/destination selectors, then `transfer plan <name> --mode install
 --prepared <id>`. Only prepare may fetch. The initial compatibility profile pins
 `skills@1.5.23` and verifies native lock provenance and staged content before any
 agent files are published. A version/schema/hash mismatch fails without silently
 upgrading or falling back to copy.
 
-MCP and instruction transfers use the same guarded family: `dev mcp transfer`
-and `dev instructions transfer`. MCP offers explicit `check`; all three families
+MCP and instruction transfers use the same guarded family: `dev agent mcp transfer`
+and `dev agent instructions transfer`. MCP offers explicit `check`; all three families
 can `export` an optional recipe and plan one `recipe` entry. See the
 [complete interoperability workflow](../guides/agent-interop.md) for native
 scope mappings, stanza ownership, credential references and platform limits.
@@ -828,7 +833,7 @@ Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
 
 ## Dashboard lifecycle additions
 
-New commands: `dev browse` / `dev repo browse [repo-or-path] --remote <name> --print`; `dev sweep --task <id>`; `dev tries delete <ref>` (`rm` alias) with `--dry-run`, `--json`, `--yes`, `--permanent`, `--confirm-delete <id>` and `--assume-no-runtime`; `dev tries restore <ref> --from <restored-path>`. [Behavior and confirmation rules](../guides/dashboard-actions.md).
+New commands: `dev repo browse` / `dev repo browse [repo-or-path] --remote <name> --print`; `dev work sweep --task <id>`; `dev tries delete <ref>` (`rm` alias) with `--dry-run`, `--json`, `--yes`, `--permanent`, `--confirm-delete <id>` and `--assume-no-runtime`; `dev tries restore <ref> --from <restored-path>`. [Behavior and confirmation rules](../guides/dashboard-actions.md).
 
 ## Explicit SSH machine management
 
@@ -866,12 +871,12 @@ silently performed as error recovery. See [local triage](../guides/local-triage.
 
 ### Skills maintenance and local presentation caches
 
-`dev skill manage [--repo <ref> | --all]` is an interactive wizard, without a
+`dev agent skill manage [--repo <ref> | --all]` is an interactive wizard, without a
 non-interactive apply shortcut. Existing
 `skill update <skill> --project|--global --yes` remains compatible.
 `skill list --json` adds optional RFC3339 `update_checked_at`.
-`dev cache clear repos` clears repository presentation snapshots;
-`dev cache clear skills` clears dated source comparisons; `all` includes both.
+`dev self cache clear repos` clears repository presentation snapshots;
+`dev self cache clear skills` clears dated source comparisons; `all` includes both.
 Neither removes `stats.db` or skills run receipts.
 See [Skills management](../guides/skills-management.md).
 
@@ -927,7 +932,7 @@ for stage meanings, platform collectors and local-output privacy.
 
 ## Feedback reports and repair sources
 
-`dev feedback draft` saves a local report; `issue <id>` previews its public body,
+`dev self feedback draft` saves a local report; `issue <id>` previews its public body,
 `--search` queries related issues and `--publish --yes --revision <revision>`
 expresses prior authorization for the exact content/target. `repair <id> --base
 <ref>` saves a guarded plan; `--apply --plan <id> --yes` prepares its isolated
@@ -1082,12 +1087,12 @@ controller save flow. See [SSH workflows](../guides/ssh-hosts.md#fleet-source-pr
 
 ## Repository hygiene
 
-`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+`dev git hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
 policies, private local identity imports and reviewed text replacement/recovery on
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.
 
-`dev hygiene report` reads this checkout's newest stored scan without scanning
+`dev git hygiene report` reads this checkout's newest stored scan without scanning
 again; `--scope staged|worktree|history` selects that scope's latest and
 `--report ID` selects an exact report. Latest lookup is checkout-specific and
 excludes snapshots. Stored reports are historical; `checkout_current` compares
@@ -1100,13 +1105,13 @@ roots, not source bytes. `--rescan` requests new observations (default worktree)
 `--rule`, `--category secret,known,generic` and repeatable `--path <glob>` filter
 before aggregation; invalid globs are rejected and reported filters are
 policy-masked. `--findings` adds individual findings. Agents should prefer
-`dev hygiene report --json` (`hygiene_summary` schema 1) over parsing scan output;
+`dev git hygiene report --json` (`hygiene_summary` schema 1) over parsing scan output;
 see the [summary contract](compatibility.md#hygiene-summary-json-contract).
 
 `--values` adds masked distinct values and implies `--rescan` unless `--report`
 names a scan captured with values. Raw values and context stay only in a private
 0600 `<report-id>.values.review.txt`, not stdout, JSON or scan records.
-`dev hygiene review-path <plan-or-report-id>` prints a plan proposal or captured
+`dev git hygiene review-path <plan-or-report-id>` prints a plan proposal or captured
 values review location without its contents; never paste that file into chat,
 Git or CI. Additive `file_id` keeps exact files distinct; legacy masked-path
 counts are marked `file_counts_complete: false`. `values_status` reports
@@ -1166,7 +1171,7 @@ or `observation_error`. Listing/status/readiness never mutate or reconcile.
 
 ### Retention configuration
 
-`dev artifact setup` and `dev repo setup --artifacts` share reviewed plans.
+`dev agent artifact setup` and `dev repo setup --artifacts` share reviewed plans.
 `.dev-cli/artifacts.toml` records project ID, track/archive/unmanaged mode,
 specstory/files source, capture location policy, literal paths and export rules.
 Host-local archive/protection bindings and signed receipts stay under

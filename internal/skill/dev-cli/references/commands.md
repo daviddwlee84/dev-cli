@@ -18,35 +18,124 @@ in CI to catch drift.
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
 - `--scaffolds` — path to scaffolds.toml (default: $XDG_CONFIG_HOME/dev/scaffolds.toml)
 
-### `dev adopt`
+### `dev activity`
 
-Import existing worktrees, sessions and branches as tasks
+Review development history and recorded activity
 
 ```
-dev adopt [flags]
+dev activity
 ```
 
-- `--apply` — record the candidates as tasks
-- `--no-branches` — skip local branches ahead of their base
-- `--no-sessions` — skip live runtime sessions
-- `--no-worktrees` — skip existing linked worktrees
-- `--state` — state to record adopted tasks in (hot, warm, cold, done)
-- `--yes` — with --apply, do not confirm each one
+### `dev activity journal`
 
-### `dev artifact`
+Generate a development journal from Git and current context
+
+```
+dev activity journal [flags]
+```
+
+- `--all-authors` — include commits by every author
+- `--author` — exact author email (repeatable; default: effective Git user)
+- `--granularity` — detail level: auto, repo, branch or commit
+- `--include-merges` — include merge commits
+- `--json` — emit stable JSON
+- `--max-commits` — maximum commit details in auto/commit output (0 for all)
+- `--metrics` — include files, additions, deletions and churn
+- `-r, --repo` — limit to this repository (repeatable)
+- `--since` — start: today, yesterday, 7d, 4w, 3mo, 1y or YYYY-MM-DD
+- `--until` — inclusive end: today, yesterday or YYYY-MM-DD
+
+### `dev activity stats`
+
+Show where development time actually went
+
+```
+dev activity stats [flags]
+```
+
+- `--by-repo` — show only the per-repo breakdown
+- `--heatmap` — show the day grid (shown by default unless --by-repo)
+- `--limit` — maximum repositories in the breakdown (0 for all)
+- `-r, --repo` — limit to repositories matching this
+- `--since` — window: 30d, 6mo, 1y, or a YYYY-MM-DD date
+- `--source` — limit to these sources (session, git, wakatime)
+
+### `dev activity stats backfill`
+
+Seed the database from git commit history
+
+```
+dev activity stats backfill [flags]
+```
+
+- `--author` — only commits from this author email
+- `-r, --repo` — backfill only this repository
+- `--since` — how far back to scan
+
+### `dev activity stats clear`
+
+Delete selected activity data (this is durable data, not cache)
+
+```
+dev activity stats clear [flags]
+```
+
+- `--all` — delete all activity and collector checkpoints
+- `-r, --repo` — delete this exact repository name
+- `--source` — delete these sources: session, git, wakatime
+- `-y, --yes` — do not prompt
+
+### `dev activity stats import-wakatime`
+
+Import per-project daily totals from WakaTime
+
+```
+dev activity stats import-wakatime [flags]
+```
+
+- `--since` — how far back to import
+
+### `dev activity stats path`
+
+Print the durable activity database path
+
+```
+dev activity stats path
+```
+
+### `dev activity stats sample`
+
+Record one interval of live session activity
+
+```
+dev activity stats sample [flags]
+```
+
+- `--include-idle` — also count sessions whose agent is idle
+- `--interval` — time to attribute, matching how often this runs
+
+### `dev agent`
+
+Manage agent skills, MCP, instructions, prompts and history
+
+```
+dev agent
+```
+
+### `dev agent artifact`
 
 Manage coding-agent transcripts and plans
 
 ```
-dev artifact
+dev agent artifact
 ```
 
-### `dev artifact archive`
+### `dev agent artifact archive`
 
 Preserve selected history in an external Git archive
 
 ```
-dev artifact archive [flags]
+dev agent artifact archive [flags]
 ```
 
 - `--apply` — commit the exact reviewed copies to the archive
@@ -59,12 +148,12 @@ dev artifact archive [flags]
 - `--writer-stopped` — attest the exact recorder has exited before applying
 - `-y, --yes` — confirm the reviewed archive commit
 
-### `dev artifact backup`
+### `dev agent artifact backup`
 
 Publish a verified original Git backup to an empty remote
 
 ```
-dev artifact backup [migration-plan] [flags]
+dev agent artifact backup [migration-plan] [flags]
 ```
 
 - `--apply` — publish the reviewed original Git refs
@@ -74,22 +163,22 @@ dev artifact backup [migration-plan] [flags]
 - `--repo` — source repository or worktree (default: current directory)
 - `-y, --yes` — confirm the reviewed backup publication
 
-### `dev artifact discard`
+### `dev agent artifact discard`
 
 Abandon one failed artifact handoff
 
 ```
-dev artifact discard <intent> [flags]
+dev agent artifact discard <intent> [flags]
 ```
 
 - `-y, --yes` — confirm discarding the intent without prompting
 
-### `dev artifact finalize`
+### `dev agent artifact finalize`
 
 Finalize a prepared session after its transcript writer stops
 
 ```
-dev artifact finalize [flags]
+dev agent artifact finalize [flags]
 ```
 
 - `--allow-commit` — authorize one guarded canonical co-commit attempt or reconciliation
@@ -105,12 +194,12 @@ dev artifact finalize [flags]
 - `--settle` — required transcript stability interval
 - `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
 
-### `dev artifact find`
+### `dev agent artifact find`
 
 Find saved history by session, commit, or text
 
 ```
-dev artifact find [text] [flags]
+dev agent artifact find [text] [flags]
 ```
 
 - `--all` — search all projects in this configured archive
@@ -120,22 +209,22 @@ dev artifact find [text] [flags]
 - `--repo` — source repository or worktree (default: current directory)
 - `--session` — originating provider:uuid
 
-### `dev artifact list`
+### `dev agent artifact list`
 
 List pending and completed artifact handoffs
 
 ```
-dev artifact list [flags]
+dev agent artifact list [flags]
 ```
 
 - `--json` — emit versioned handoffs with separate read-only helper observations
 
-### `dev artifact migrate`
+### `dev agent artifact migrate`
 
 Stop tracking history or build a filtered repository copy
 
 ```
-dev artifact migrate [flags]
+dev agent artifact migrate [flags]
 ```
 
 - `--apply` — apply the exact reviewed migration plan
@@ -149,12 +238,31 @@ dev artifact migrate [flags]
 - `--writer-stopped` — attest the selected artifact recorder has exited (required for untrack)
 - `-y, --yes` — confirm this migration without another prompt
 
-### `dev artifact setup`
+### `dev agent artifact prepare`
+
+Arm post-writer artifact finalization without closing this agent
+
+```
+dev agent artifact prepare [task-or-worktree] [flags]
+```
+
+- `--allow-large` — acknowledge adding a new untracked transcript over 2 MiB
+- `--closeout` — handoff lane: product-first or explicit canonical co-commit
+- `--closeout-helper` — explicit installed canonical helper scripts directory (co-commit only)
+- `--json` — emit a versioned preparation result, including retained partial effects
+- `--message-file` — base commit message file for co-commit, without managed provenance trailers
+- `--no-plan` — explicitly select no plan for co-commit
+- `--plan` — exact .claude/plans path to include (repeatable)
+- `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
+- `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+- `--specstory-path` — exact SpecStory Markdown path matching the selected session and capture root
+
+### `dev agent artifact setup`
 
 Choose where agent history is kept and what enters Git
 
 ```
-dev artifact setup [flags]
+dev agent artifact setup [flags]
 ```
 
 - `--apply` — apply the exact reviewed setup plan
@@ -170,23 +278,23 @@ dev artifact setup [flags]
 - `--source` — capture source: specstory or files (detects existing SpecStory history)
 - `-y, --yes` — confirm applying the reviewed plan
 
-### `dev artifact status`
+### `dev agent artifact status`
 
 Show how agent history is captured, stored, and protected
 
 ```
-dev artifact status [flags]
+dev agent artifact status [flags]
 ```
 
 - `--json` — emit structured metadata without transcript contents
 - `--repo` — source repository or worktree (default: current directory)
 
-### `dev artifact sync`
+### `dev agent artifact sync`
 
 Fetch or publish the configured Git archive
 
 ```
-dev artifact sync [flags]
+dev agent artifact sync [flags]
 ```
 
 - `--apply` — apply the exact reviewed network plan
@@ -199,252 +307,623 @@ dev artifact sync [flags]
 - `--repo` — source repository or worktree (default: current directory)
 - `-y, --yes` — confirm applying the reviewed sync plan
 
-### `dev bootstrap`
+### `dev agent instructions`
 
-Discover and optionally organise an existing machine without breaking its layout
-
-```
-dev bootstrap [path...] [flags]
-```
-
-- `--apply` — apply the ready index or move actions
-- `--config-out` — write a new config.toml for the resulting roots
-- `--follow-symlinks` — follow symlinked container directories with cycle detection
-- `--force-config` — overwrite config-out if it exists
-- `--index` — plan a non-destructive symlink catalog at this path
-- `--json` — emit the scan as JSON
-- `--layout` — target layout: flat or preserve
-- `--max-depth` — recursive depth; 0 means unlimited
-- `--move` — plan physical repository moves into this path
-- `--relative-links` — use relative symlink payloads in an index
-- `--worktrees` — include linked worktrees in the report
-- `--yes` — with --move --apply, do not confirm each repository
-
-### `dev browse`
-
-Open the repository homepage, or print its URL without opening
+Share AGENTS.md and CLAUDE.md with guarded transfers
 
 ```
-dev browse [repo-or-path] [flags]
+dev agent instructions
 ```
 
-- `--print` — print the HTTPS URL without opening a browser
-- `--remote` — select a configured Git remote
+### `dev agent instructions transfer`
 
-### `dev cache`
-
-Inspect and clear regenerable dev caches
+Plan and apply explicit agent artifact transfers
 
 ```
-dev cache
+dev agent instructions transfer
 ```
 
-### `dev cache clear`
+### `dev agent instructions transfer apply`
 
-Remove a regenerable cache
-
-```
-dev cache clear <skills|repos|remote|notes|fleet|ssh-discovery|size|gitignore|licenses|all>
-```
-
-### `dev cache list`
-
-List cache paths, sizes, and ages
+Apply one exact reviewed transfer plan
 
 ```
-dev cache list
+dev agent instructions transfer apply [flags]
 ```
 
-### `dev cache path`
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
 
-Print dev's XDG cache directory
+### `dev agent instructions transfer export`
 
-```
-dev cache path
-```
-
-### `dev completion`
-
-Generate the autocompletion script for the specified shell
+Print an optional credential-free reconstruction recipe
 
 ```
-dev completion
+dev agent instructions transfer export <id> [flags]
 ```
 
-### `dev completion bash`
+- `--entry` — portable recipe entry name
 
-Generate the autocompletion script for bash
+### `dev agent instructions transfer plan`
 
-```
-dev completion bash
-```
-
-- `--no-descriptions` — disable completion descriptions
-
-### `dev completion fish`
-
-Generate the autocompletion script for fish
+Preview a selected transfer without changing agent files
 
 ```
-dev completion fish [flags]
+dev agent instructions transfer plan [flags]
 ```
 
-- `--no-descriptions` — disable completion descriptions
+- `--adopt` — adopt an equivalent instruction file with private recovery
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--style` — mirror style: symlink or import
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
 
-### `dev completion powershell`
+### `dev agent instructions transfer recipe`
 
-Generate the autocompletion script for powershell
-
-```
-dev completion powershell [flags]
-```
-
-- `--no-descriptions` — disable completion descriptions
-
-### `dev completion zsh`
-
-Generate the autocompletion script for zsh
-
-```
-dev completion zsh [flags]
-```
-
-- `--no-descriptions` — disable completion descriptions
-
-### `dev config`
-
-Show, edit, initialise and locate dev's configuration
+Plan one entry from an optional reconstruction recipe
 
 ```
-dev config
+dev agent instructions transfer recipe <file> [flags]
 ```
 
-### `dev config edit`
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
 
-Open this config in $VISUAL or $EDITOR
+### `dev agent instructions transfer refresh`
 
-```
-dev config edit [flags]
-```
-
-- `--editor` — editor command, overriding $VISUAL and $EDITOR
-- `--project` — edit .dev-cli/config.toml in the current repository
-
-### `dev config init`
-
-Write a starter config.toml, detecting this machine's layout
+Create a reviewed refresh plan
 
 ```
-dev config init [flags]
+dev agent instructions transfer refresh <id> [flags]
 ```
 
-- `-f, --force` — overwrite an existing config
-- `--stdout` — print the generated config instead of writing it
+- `--json` — emit the sanitized plan
 
-### `dev config path`
+### `dev agent instructions transfer status`
 
-Print the global or project config file path
-
-```
-dev config path [repo] [flags]
-```
-
-- `--project` — print the current/selected repository config path
-
-### `dev config scaffolds`
-
-Show, edit, initialise and locate repository scaffold presets
+List local transfer plans and operation ledgers
 
 ```
-dev config scaffolds
+dev agent instructions transfer status [flags]
 ```
 
-### `dev config scaffolds edit`
+- `--json` — emit sanitized operation ledgers
 
-Open scaffolds.toml in an editor
+### `dev agent instructions transfer undo`
 
-```
-dev config scaffolds edit [flags]
-```
-
-- `--editor` — editor command, overriding $VISUAL and $EDITOR
-
-### `dev config scaffolds init`
-
-Write a starter scaffolds.toml
+Create a reviewed undo plan
 
 ```
-dev config scaffolds init [flags]
+dev agent instructions transfer undo <id> [flags]
 ```
 
-- `-f, --force` — overwrite an existing file
-- `--stdout` — print instead of writing
+- `--json` — emit the sanitized plan
 
-### `dev config scaffolds path`
+### `dev agent mcp`
 
-Print the scaffold config path
-
-```
-dev config scaffolds path
-```
-
-### `dev config scaffolds show`
-
-Print the effective scaffold catalog
+Inspect static agent MCP server declarations
 
 ```
-dev config scaffolds show
+dev agent mcp
 ```
 
-### `dev config show`
+### `dev agent mcp list`
 
-Print the effective global or project configuration
-
-```
-dev config show [repo] [flags]
-```
-
-- `--project` — show the current/selected repository overlay
-
-### `dev config trust`
-
-Approve or revoke executable project configuration by content hash
+List configured MCP server declarations
 
 ```
-dev config trust [repo] [flags]
+dev agent mcp list [flags]
 ```
 
-- `--list` — list trusted repository hashes
-- `--revoke` — remove trust for this repository
-- `-y, --yes` — approve without prompting
+- `--agent` — agent format: claude-code, codex, cursor, gemini-cli, opencode
+- `--all` — scan every configured canonical repository
+- `--json` — emit a stable sanitized JSON envelope
+- `-r, --repo` — scan one repository or explicit checkout path
+- `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
 
-### `dev doctor`
+### `dev agent mcp transfer`
 
-Check dependencies, paths and runtime backends
-
-```
-dev doctor
-```
-
-### `dev done`
-
-Finish a task with optional worktree retirement
+Plan and apply explicit agent artifact transfers
 
 ```
-dev done [task] [flags]
+dev agent mcp transfer
 ```
 
-- `--base-ref` — base ref used to verify --merged (default: recorded base)
-- `--confirm-squash` — attest that this contained commit represents a squash merge
-- `--delete-branch` — deprecated here: use dev retire --delete-branch
-- `--dirty` — dirty checkout policy: auto, fail, commit or discard
-- `--ff` — rebase onto the base and fast-forward it
-- `--keep-worktree` — deprecated: worktrees are always kept until dev retire
-- `--merged` — verify an externally merged branch and mark the task done
-- `-m, --message` — commit message for --dirty=commit
-- `--pr` — push and open a pull/merge request instead of merging locally
-- `--push` — push the resulting base (direct mode pushes its current branch)
-- `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
+### `dev agent mcp transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev agent mcp transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev agent mcp transfer check`
+
+Explicitly initialize an applied MCP server
+
+```
+dev agent mcp transfer check <id> [flags]
+```
+
+- `--json` — emit connection evidence without server payloads
+
+### `dev agent mcp transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev agent mcp transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev agent mcp transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev agent mcp transfer plan [flags]
+```
+
+- `--adopt` — adopt an equivalent MCP stanza or explicitly change its managed source
+- `--as` — destination server name
+- `--bind` — destination environment binding SERVER_ENV=PROCESS_ENV
+- `--bridge` — use the installed dev stdio launcher with a host-local binding
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--secret-env-file` — explicit local JSON env source for the optional launcher
+- `--server` — one source server name
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+- `--transport` — explicit transport for ambiguous remote declarations
+
+### `dev agent mcp transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev agent mcp transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev agent mcp transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev agent mcp transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev agent mcp transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev agent mcp transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev agent mcp transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev agent mcp transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev agent prompt`
+
+Render operational context, or hand it to a configured agent
+
+```
+dev agent prompt
+```
+
+### `dev agent prompt agents`
+
+List configured agent profiles without private launch details
+
+```
+dev agent prompt agents [flags]
+```
+
+- `--json` — emit stable structured agent metadata
+
+### `dev agent prompt list`
+
+List built-in prompt recipes
+
+```
+dev agent prompt list [flags]
+```
+
+- `--json` — emit structured recipe metadata
+
+### `dev agent prompt open`
+
+Open an interactive foreground agent in the current terminal
+
+```
+dev agent prompt open
+```
+
+### `dev agent prompt open feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev agent prompt open feedback-fix <report-id>
+```
+
+### `dev agent prompt open pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev agent prompt open pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev agent prompt open session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev agent prompt open session-close
+```
+
+### `dev agent prompt open workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev agent prompt open workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev agent prompt render`
+
+Render a built-in prompt to stdout
+
+```
+dev agent prompt render
+```
+
+### `dev agent prompt render feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev agent prompt render feedback-fix <report-id>
+```
+
+### `dev agent prompt render pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev agent prompt render pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev agent prompt render session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev agent prompt render session-close
+```
+
+### `dev agent prompt render workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev agent prompt render workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev agent prompt run`
+
+Run a one-shot agent with a built-in prompt
+
+```
+dev agent prompt run
+```
+
+### `dev agent prompt run feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev agent prompt run feedback-fix <report-id>
+```
+
+### `dev agent prompt run pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev agent prompt run pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev agent prompt run session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev agent prompt run session-close
+```
+
+### `dev agent prompt run workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev agent prompt run workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev agent skill`
+
+Inspect agent skills and manage dev's bundled skill
+
+```
+dev agent skill
+```
+
+### `dev agent skill add`
+
+Open the interactive skills installer
+
+```
+dev agent skill add [package]
+```
+
+### `dev agent skill install`
+
+Install the skill into the agent skills directory
+
+```
+dev agent skill install [flags]
+```
+
+- `--check` — compare installed content with this binary without writing
+- `--dir` — install directory (default: ~/.agents/skills/dev-cli)
+- `--if-installed` — refresh only an existing install, preserving links and recorded local edits
+- `--no-link` — do not symlink into per-tool skill directories
+
+### `dev agent skill list`
+
+List project and global agent skills
+
+```
+dev agent skill list [flags]
+```
+
+- `--all` — scan every configured canonical repository
+- `--check` — contact Git sources and check for updates without installing them
+- `-g, --global` — list global skills
+- `--json` — emit a stable machine-readable JSON array
+- `-p, --project` — list project skills
+- `-r, --repo` — scan one repository or explicit checkout path
+
+### `dev agent skill manage`
+
+Check, update, remove or restore skills with a scoped wizard
+
+```
+dev agent skill manage [flags]
+```
+
+- `--all` — choose among configured repositories with skills-lock.json
+- `-r, --repo` — start with one repository or exact checkout
+
+### `dev agent skill print`
+
+Print SKILL.md to stdout
+
+```
+dev agent skill print
+```
+
+### `dev agent skill sync`
+
+Regenerate the skill's command reference from the live command tree
+
+```
+dev agent skill sync [flags]
+```
+
+- `--check` — report drift and exit non-zero instead of writing
+
+### `dev agent skill transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev agent skill transfer
+```
+
+### `dev agent skill transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev agent skill transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev agent skill transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev agent skill transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev agent skill transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev agent skill transfer plan <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev agent skill transfer prepare`
+
+Fetch and verify one skill in private staging
+
+```
+dev agent skill transfer prepare <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev agent skill transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev agent skill transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev agent skill transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev agent skill transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev agent skill transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev agent skill transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev agent skill transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev agent skill transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev agent skill uninstall`
+
+Remove dev's installed bundled skill and its matching agent links
+
+```
+dev agent skill uninstall [flags]
+```
+
+- `--dir` — installation directory (default: ~/.agents/skills/dev-cli)
+- `--dry-run` — show the removal preview without changing files
+- `-y, --yes` — confirm the displayed file and link removal
+
+### `dev agent skill update`
+
+Update one skill in one explicit scope
+
+```
+dev agent skill update <skill> [flags]
+```
+
+- `-g, --global` — update the global skill
+- `-p, --project` — update the project-scoped skill
+- `-r, --repo` — project repository or explicit checkout path
+- `-y, --yes` — skip dev's confirmation
 
 ### `dev dotfile`
 
@@ -502,69 +981,6 @@ Run native chezmoi update
 ```
 dev dotfile update
 ```
-
-### `dev edit`
-
-Open dev's config in $VISUAL or $EDITOR
-
-```
-dev edit [flags]
-```
-
-- `--editor` — editor command, overriding $VISUAL and $EDITOR
-- `--project` — edit .dev-cli/config.toml in the current repository
-
-### `dev feedback`
-
-Prepare a local report, publish reviewed feedback, or plan an isolated fix
-
-```
-dev feedback
-```
-
-### `dev feedback draft`
-
-Save a private local report and a sanitized public issue draft
-
-```
-dev feedback draft [flags]
-```
-
-- `--body-file` — Markdown reproduction/expected/actual body file; - reads stdin
-- `--diagnostic` — local schema-v1 ssh diagnose JSON to project into public evidence
-- `--json` — emit the saved report ID, paths and next commands
-- `--title` — short report title
-
-### `dev feedback issue`
-
-Preview, search for, or explicitly publish reviewed GitHub feedback
-
-```
-dev feedback issue <id> [flags]
-```
-
-- `--existing` — comment on this exact existing issue instead of creating a new issue
-- `--json` — emit one versioned preview or publication result
-- `--publish` — publish the reviewed issue or comment
-- `--repo` — explicit [host/]owner/name issue target
-- `--revision` — exact content/target revision from preview
-- `--search` — explicitly query related GitHub issues
-- `--yes` — confirm publication of the supplied revision without prompting
-
-### `dev feedback repair`
-
-Plan or prepare an isolated repair checkout without starting an agent
-
-```
-dev feedback repair <id> [flags]
-```
-
-- `--apply` — create only the checkout/task described by the saved plan
-- `--base` — explicit local base ref for the repair branch
-- `--json` — emit one versioned repair plan or result
-- `--plan` — exact saved repair plan ID to apply
-- `--repo` — exact local dev-cli source checkout
-- `--yes` — confirm the saved repair plan without prompting
 
 ### `dev fleet`
 
@@ -709,74 +1125,9 @@ dev fleet sync <repo> [flags]
 - `--push` — push the source branch before fan-out
 - `--remote` — Git remote to publish/check (default: upstream, then origin)
 
-### `dev flow`
-
-Preview: inspect and run guarded repository lifecycle actions
-
-```
-dev flow [repo]
-```
-
-### `dev gist`
-
-Find and share GitHub Gists
-
-```
-dev gist
-```
-
-### `dev gist create`
-
-Publish text files, stdin or an editor draft as one snippet
-
-```
-dev gist create [file...] [flags]
-```
-
-- `-d, --description` — description
-- `--dry-run` — preview filenames and destination without publishing content
-- `--editor` — editor command override for a new draft (otherwise VISUAL/EDITOR)
-- `--filename` — filename for stdin or the editor draft
-- `--json` — emit a metadata-only preview or publication result as JSON
-- `--title` — snippet title (GitLab; also used as a GitHub description fallback)
-- `--visibility` — github: secret/public; gitlab: private/public/internal (if supported)
-- `--web` — open the created snippet after its URL is recorded
-
-### `dev gist list`
-
-List the authenticated accounts' snippets
-
-```
-dev gist list [query...] [flags]
-```
-
-- `--content` — also search file contents (bounded network reads; reports incomplete coverage)
-- `--json` — emit metadata and coverage as JSON; never include file contents
-
-### `dev gist open`
-
-Open a snippet, or choose one from your inventory
-
-```
-dev gist open [URL|platform:ID|ID] [flags]
-```
-
-- `--print` — print the verified snippet URL without opening a browser
-
-### `dev gist search`
-
-Search snippet descriptions and filenames
-
-```
-dev gist search query... [flags]
-```
-
-- `--content` — also search file contents (bounded network reads; reports incomplete coverage)
-- `--json` — emit metadata and coverage as JSON; never include file contents
-
 ### `dev git`
 
-Guarded Git transactions that need receipts or recovery
+Manage Git worktrees, submodules, ignore rules and guarded transactions
 
 ```
 dev git
@@ -793,6 +1144,220 @@ dev git amend-all [flags]
 - `--allow-unscanned-artifacts` — include agent artifacts without a detected project scanner
 - `--exclude-agent-artifacts` — leave recognized agent artifacts unstaged
 - `--rewrite-published` — acknowledge rewriting a commit already contained in the upstream
+
+### `dev git hygiene`
+
+Inspect hooks, scan secrets and privacy, and apply reviewed text changes
+
+```
+dev git hygiene
+```
+
+### `dev git hygiene manage`
+
+Preview and set up hygiene across selected repositories
+
+```
+dev git hygiene manage [repo...] [flags]
+```
+
+- `--all` — choose from configured repositories, including those without skills locks
+
+### `dev git hygiene redact`
+
+Preview selected text replacements or apply a saved plan
+
+```
+dev git hygiene redact [flags]
+```
+
+- `--apply` — apply a reviewed replacement plan
+- `--file` — relative file to redact (repeatable)
+- `--finding` — specific finding ID to redact (repeatable)
+- `--plan` — reviewed plan ID
+- `--report` — worktree scan report ID
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
+- `-y, --yes` — confirm the reviewed replacements
+
+### `dev git hygiene repair-encoding`
+
+Preview or repair invalid UTF-8 bytes in selected working files
+
+```
+dev git hygiene repair-encoding [flags]
+```
+
+- `--apply` — apply the exact reviewed encoding repair plan
+- `--file` — relative working file to repair (repeatable; required for preview)
+- `--invalid` — invalid-byte handling: replace with � or remove
+- `--plan` — reviewed encoding repair plan ID
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
+- `-y, --yes` — confirm the reviewed repair
+
+### `dev git hygiene report`
+
+Summarize a scan by severity, rule and file
+
+```
+dev git hygiene report [flags]
+```
+
+- `--audit` — with --rescan: include findings suppressed by local exceptions
+- `--by` — groups to show: severity, rule, file and/or category
+- `--category` — only these categories: secret, known, generic
+- `--disposition` — only these dispositions: block, warn, accepted
+- `--file` — with --rescan: select an in-scope relative file (repeatable)
+- `--findings` — list individual findings (location, occurrences, finding ID)
+- `--path` — only findings whose file matches this glob (repeatable)
+- `--range` — with --rescan: history FROM..TO commit OIDs
+- `--report` — summarize this exact stored scan report ID
+- `--rescan` — run a fresh scan before summarizing
+- `--rule` — only these rule IDs
+- `--scope` — newest stored scan of this scope, or the --rescan scope: staged, worktree or history
+- `--timeout` — with --rescan: maximum scan duration
+- `--top` — maximum rows per group (0 shows all)
+- `--values` — show masked distinct values per rule; raw values stay in a private review file
+
+### `dev git hygiene restore`
+
+Preview or restore one private recovery receipt
+
+```
+dev git hygiene restore [flags]
+```
+
+- `--apply` — restore unchanged post-apply files
+- `--receipt` — private recovery receipt ID
+- `--writer-stopped` — attest artifact writers have exited before recovery
+- `-y, --yes` — confirm the reviewed recovery
+
+### `dev git hygiene review-path`
+
+Print a plan's or report's private review file location without its contents
+
+```
+dev git hygiene review-path <plan-or-report-id>
+```
+
+### `dev git hygiene rules`
+
+Manage private rules, policy overrides and precise exceptions
+
+```
+dev git hygiene rules
+```
+
+### `dev git hygiene rules add`
+
+Plan a private literal, CIDR or RE2 rule from a local value file
+
+```
+dev git hygiene rules add [flags]
+```
+
+- `--action` — rule policy: block, warn or off
+- `--id` — non-sensitive rule label
+- `--kind` — literal, cidr or regex
+- `--path` — relative path glob (repeatable)
+- `--replacement` — replacement text (default: redaction sentinel)
+- `--value-file` — private rule value file; - reads stdin
+
+### `dev git hygiene rules allow`
+
+Plan a local exception for one exact finding with a reason
+
+```
+dev git hygiene rules allow [flags]
+```
+
+- `--finding` — exact finding ID
+- `--reason` — non-sensitive justification
+- `--report` — scan report ID
+
+### `dev git hygiene rules apply`
+
+Apply one reviewed private rule or policy plan
+
+```
+dev git hygiene rules apply [flags]
+```
+
+- `--plan` — reviewed rule plan ID
+- `-y, --yes` — confirm the reviewed rule changes
+
+### `dev git hygiene rules import`
+
+Preview local identity candidates or plan selected private rules
+
+```
+dev git hygiene rules import [flags]
+```
+
+- `--from` — static source: ssh, local or machines
+- `--select` — candidate ID to import (repeatable)
+
+### `dev git hygiene rules policy`
+
+Plan local overrides selected with --secrets, --known and --generic
+
+```
+dev git hygiene rules policy
+```
+
+### `dev git hygiene scan`
+
+Scan index, working files or frozen local Git history
+
+```
+dev git hygiene scan [flags]
+```
+
+- `--audit` — include findings suppressed by local exceptions, gitleaksignore and inline pragmas
+- `--file` — select an in-scope relative file (repeatable; not history)
+- `--range` — history only: full FROM..TO commit OIDs (no implicit fetch)
+- `--scope` — scan scope: staged, worktree or history
+- `--timeout` — maximum scan duration; incomplete scans fail
+
+### `dev git hygiene setup`
+
+Preview or apply repository hygiene configuration and hook integration
+
+```
+dev git hygiene setup [flags]
+```
+
+- `--apply` — apply the exact saved setup plan
+- `--migrate-hooks` — preview migration of known equivalent scanner hooks and rule updates; retain finalizers and custom settings
+- `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
+- `--plan` — reviewed plan ID
+- `-y, --yes` — confirm the reviewed plan
+
+### `dev git hygiene status`
+
+Inspect effective hooks and policy without executing them
+
+```
+dev git hygiene status [flags]
+```
+
+- `--check-remote` — explicitly query GitHub visibility; never change policy automatically
+- `--remote` — remote to query with --check-remote
+
+### `dev git ignore`
+
+Write a .gitignore from GitHub's templates plus common local-state rules
+
+```
+dev git ignore [language...] [flags]
+```
+
+- `--list` — list the templates available offline
+- `--no-agents` — omit ephemeral coding-agent state
+- `--no-editors` — omit editor and IDE state
+- `--no-env` — omit local env and secret files
+- `--no-os` — omit the host platform's junk files
+- `--offline` — use only cached and bundled templates
+- `--stdout` — print instead of writing the file
 
 ### `dev git pull-rebase`
 
@@ -820,6 +1385,70 @@ dev git setup [flags]
 
 - `--print` — print reviewed setup commands without applying them
 
+### `dev git submodule`
+
+Inspect, initialize and develop the submodules of a workspace
+
+```
+dev git submodule
+```
+
+### `dev git submodule add`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev git submodule add [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
+### `dev git submodule develop`
+
+Add selected submodules to the current managed task branch
+
+```
+dev git submodule develop <path>... [flags]
+```
+
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+
+### `dev git submodule init`
+
+Initialize missing submodules at their gitlinks; preserve existing checkouts
+
+```
+dev git submodule init [flags]
+```
+
+- `--dry-run` — inspect without initializing or contacting remotes
+
+### `dev git submodule recover`
+
+Restore child repositories retained after interrupted recursive cleanup
+
+```
+dev git submodule recover <journal.json> [flags]
+```
+
+- `--dry-run` — validate the recovery journal without changing files
+
+### `dev git submodule status`
+
+Read the recursive gitlink and checkout graph without network access
+
+```
+dev git submodule status [flags]
+```
+
+- `--json` — emit the submodule graph as JSON
+
 ### `dev git uncommit`
 
 Soft-reset one commit and save a message receipt
@@ -830,619 +1459,98 @@ dev git uncommit [flags]
 
 - `--rewrite-published` — acknowledge rewriting a commit already contained in the upstream
 
-### `dev gitignore`
+### `dev git worktree`
 
-Write a .gitignore from GitHub's templates plus common local-state rules
-
-```
-dev gitignore [language...] [flags]
-```
-
-- `--list` — list the templates available offline
-- `--no-agents` — omit ephemeral coding-agent state
-- `--no-editors` — omit editor and IDE state
-- `--no-env` — omit local env and secret files
-- `--no-os` — omit the host platform's junk files
-- `--offline` — use only cached and bundled templates
-- `--stdout` — print instead of writing the file
-
-### `dev graduate`
-
-Promote an experiment into a real project
+Create, list, open and remove worktrees
 
 ```
-dev graduate [try] [flags]
+dev git worktree
 ```
 
-- `-c, --category` — category subdirectory under project_root
-- `--dry-run` — show what would happen without moving anything
-- `--name` — project name (default: the try name without its date prefix)
-- `--private` — create the remote as private
-- `--push` — push after creating the remote
-- `--remote` — create a remote repository with gh or glab
+### `dev git worktree create`
+
+Create a worktree at the configured path and provision it
+
+```
+dev git worktree create <branch> [flags]
+```
+
+- `--base` — ref a new branch starts from
+- `--label` — runtime session label
+- `--no-provision` — skip dependency install and gitignored-file copying
+- `--no-session` — do not open a runtime session
+- `--path` — override the templated location
+- `-r, --repo` — repository (default: the current one)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
+
+### `dev git worktree list`
+
+List the worktrees of a repository
+
+```
+dev git worktree list [flags]
+```
+
+- `-r, --repo` — repository (default: the current one)
+
+### `dev git worktree open`
+
+Open an existing worktree in the runtime
+
+```
+dev git worktree open <branch> [flags]
+```
+
+- `--no-focus` — open or reuse the runtime without switching, attaching, or changing shell directory
+- `-r, --repo` — repository (default: the current one)
+
+### `dev git worktree plan`
+
+Show what a new worktree of this repo would be provisioned with
+
+```
+dev git worktree plan [flags]
+```
+
+- `-r, --repo` — repository (default: the current one)
+- `--write` — seed .dev-cli/config.toml in the repository from what was detected
+
+### `dev git worktree provision`
+
+Re-run provisioning for an existing worktree
+
+```
+dev git worktree provision [path] [flags]
+```
+
+- `--dry-run` — show the plan instead of applying it
+
+### `dev git worktree rm`
+
+Remove a worktree checkout (never the branch)
+
+```
+dev git worktree rm <branch> [flags]
+```
+
+- `--assume-no-runtime` — continue when runtime enumeration fails
+- `--close-unknown` — allow external closure of unknown runtime status
+- `-f, --force` — remove even with uncommitted changes (never bypasses caller/runtime safety)
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
+- `-r, --repo` — repository (default: the current one)
+- `--timeout` — maximum time to wait for runtime closure
 
 ### `dev help`
 
 Guides to repository workflows, policies, and tradeoffs
 
 ```
-dev help [topic]
+dev help [topic|command path] [flags]
 ```
 
-### `dev hygiene`
-
-Inspect hooks, scan secrets and privacy, and apply reviewed text changes
-
-```
-dev hygiene
-```
-
-### `dev hygiene manage`
-
-Preview and set up hygiene across selected repositories
-
-```
-dev hygiene manage [repo...] [flags]
-```
-
-- `--all` — choose from configured repositories, including those without skills locks
-
-### `dev hygiene redact`
-
-Preview selected text replacements or apply a saved plan
-
-```
-dev hygiene redact [flags]
-```
-
-- `--apply` — apply a reviewed replacement plan
-- `--file` — relative file to redact (repeatable)
-- `--finding` — specific finding ID to redact (repeatable)
-- `--plan` — reviewed plan ID
-- `--report` — worktree scan report ID
-- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
-- `-y, --yes` — confirm the reviewed replacements
-
-### `dev hygiene repair-encoding`
-
-Preview or repair invalid UTF-8 bytes in selected working files
-
-```
-dev hygiene repair-encoding [flags]
-```
-
-- `--apply` — apply the exact reviewed encoding repair plan
-- `--file` — relative working file to repair (repeatable; required for preview)
-- `--invalid` — invalid-byte handling: replace with � or remove
-- `--plan` — reviewed encoding repair plan ID
-- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
-- `-y, --yes` — confirm the reviewed repair
-
-### `dev hygiene report`
-
-Summarize a scan by severity, rule and file
-
-```
-dev hygiene report [flags]
-```
-
-- `--audit` — with --rescan: include findings suppressed by local exceptions
-- `--by` — groups to show: severity, rule, file and/or category
-- `--category` — only these categories: secret, known, generic
-- `--disposition` — only these dispositions: block, warn, accepted
-- `--file` — with --rescan: select an in-scope relative file (repeatable)
-- `--findings` — list individual findings (location, occurrences, finding ID)
-- `--path` — only findings whose file matches this glob (repeatable)
-- `--range` — with --rescan: history FROM..TO commit OIDs
-- `--report` — summarize this exact stored scan report ID
-- `--rescan` — run a fresh scan before summarizing
-- `--rule` — only these rule IDs
-- `--scope` — newest stored scan of this scope, or the --rescan scope: staged, worktree or history
-- `--timeout` — with --rescan: maximum scan duration
-- `--top` — maximum rows per group (0 shows all)
-- `--values` — show masked distinct values per rule; raw values stay in a private review file
-
-### `dev hygiene restore`
-
-Preview or restore one private recovery receipt
-
-```
-dev hygiene restore [flags]
-```
-
-- `--apply` — restore unchanged post-apply files
-- `--receipt` — private recovery receipt ID
-- `--writer-stopped` — attest artifact writers have exited before recovery
-- `-y, --yes` — confirm the reviewed recovery
-
-### `dev hygiene review-path`
-
-Print a plan's or report's private review file location without its contents
-
-```
-dev hygiene review-path <plan-or-report-id>
-```
-
-### `dev hygiene rules`
-
-Manage private rules, policy overrides and precise exceptions
-
-```
-dev hygiene rules
-```
-
-### `dev hygiene rules add`
-
-Plan a private literal, CIDR or RE2 rule from a local value file
-
-```
-dev hygiene rules add [flags]
-```
-
-- `--action` — rule policy: block, warn or off
-- `--id` — non-sensitive rule label
-- `--kind` — literal, cidr or regex
-- `--path` — relative path glob (repeatable)
-- `--replacement` — replacement text (default: redaction sentinel)
-- `--value-file` — private rule value file; - reads stdin
-
-### `dev hygiene rules allow`
-
-Plan a local exception for one exact finding with a reason
-
-```
-dev hygiene rules allow [flags]
-```
-
-- `--finding` — exact finding ID
-- `--reason` — non-sensitive justification
-- `--report` — scan report ID
-
-### `dev hygiene rules apply`
-
-Apply one reviewed private rule or policy plan
-
-```
-dev hygiene rules apply [flags]
-```
-
-- `--plan` — reviewed rule plan ID
-- `-y, --yes` — confirm the reviewed rule changes
-
-### `dev hygiene rules import`
-
-Preview local identity candidates or plan selected private rules
-
-```
-dev hygiene rules import [flags]
-```
-
-- `--from` — static source: ssh, local or machines
-- `--select` — candidate ID to import (repeatable)
-
-### `dev hygiene rules policy`
-
-Plan local overrides selected with --secrets, --known and --generic
-
-```
-dev hygiene rules policy
-```
-
-### `dev hygiene scan`
-
-Scan index, working files or frozen local Git history
-
-```
-dev hygiene scan [flags]
-```
-
-- `--audit` — include findings suppressed by local exceptions, gitleaksignore and inline pragmas
-- `--file` — select an in-scope relative file (repeatable; not history)
-- `--range` — history only: full FROM..TO commit OIDs (no implicit fetch)
-- `--scope` — scan scope: staged, worktree or history
-- `--timeout` — maximum scan duration; incomplete scans fail
-
-### `dev hygiene setup`
-
-Preview or apply repository hygiene configuration and hook integration
-
-```
-dev hygiene setup [flags]
-```
-
-- `--apply` — apply the exact saved setup plan
-- `--migrate-hooks` — preview migration of known equivalent scanner hooks and rule updates; retain finalizers and custom settings
-- `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
-- `--plan` — reviewed plan ID
-- `-y, --yes` — confirm the reviewed plan
-
-### `dev hygiene status`
-
-Inspect effective hooks and policy without executing them
-
-```
-dev hygiene status [flags]
-```
-
-- `--check-remote` — explicitly query GitHub visibility; never change policy automatically
-- `--remote` — remote to query with --check-remote
-
-### `dev instructions`
-
-Share AGENTS.md and CLAUDE.md with guarded transfers
-
-```
-dev instructions
-```
-
-### `dev instructions transfer`
-
-Plan and apply explicit agent artifact transfers
-
-```
-dev instructions transfer
-```
-
-### `dev instructions transfer apply`
-
-Apply one exact reviewed transfer plan
-
-```
-dev instructions transfer apply [flags]
-```
-
-- `--json` — emit a sanitized transfer result
-- `--plan` — exact transfer plan ID
-
-### `dev instructions transfer export`
-
-Print an optional credential-free reconstruction recipe
-
-```
-dev instructions transfer export <id> [flags]
-```
-
-- `--entry` — portable recipe entry name
-
-### `dev instructions transfer plan`
-
-Preview a selected transfer without changing agent files
-
-```
-dev instructions transfer plan [flags]
-```
-
-- `--adopt` — adopt an equivalent instruction file with private recovery
-- `--from` — explicit source path within selected scope
-- `--from-agent` — source agent format or skill installation
-- `--from-repo` — source repository or exact checkout
-- `--from-scope` — source scope: project or user/global
-- `--json` — emit a sanitized transfer plan
-- `--mode` — copy, move, mirror, or skill install
-- `--style` — mirror style: symlink or import
-- `--to` — explicit destination path within selected scope
-- `--to-agent` — destination agent format or skill installation
-- `--to-repo` — destination repository or exact checkout
-- `--to-scope` — destination scope: project or user/global
-
-### `dev instructions transfer recipe`
-
-Plan one entry from an optional reconstruction recipe
-
-```
-dev instructions transfer recipe <file> [flags]
-```
-
-- `--entry` — one recipe entry
-- `--json` — emit a sanitized plan
-- `--repo` — repository or exact checkout containing the recipe
-
-### `dev instructions transfer refresh`
-
-Create a reviewed refresh plan
-
-```
-dev instructions transfer refresh <id> [flags]
-```
-
-- `--json` — emit the sanitized plan
-
-### `dev instructions transfer status`
-
-List local transfer plans and operation ledgers
-
-```
-dev instructions transfer status [flags]
-```
-
-- `--json` — emit sanitized operation ledgers
-
-### `dev instructions transfer undo`
-
-Create a reviewed undo plan
-
-```
-dev instructions transfer undo <id> [flags]
-```
-
-- `--json` — emit the sanitized plan
-
-### `dev journal`
-
-Generate a development journal from Git and current context
-
-```
-dev journal [flags]
-```
-
-- `--all-authors` — include commits by every author
-- `--author` — exact author email (repeatable; default: effective Git user)
-- `--granularity` — detail level: auto, repo, branch or commit
-- `--include-merges` — include merge commits
-- `--json` — emit stable JSON
-- `--max-commits` — maximum commit details in auto/commit output (0 for all)
-- `--metrics` — include files, additions, deletions and churn
-- `-r, --repo` — limit to this repository (repeatable)
-- `--since` — start: today, yesterday, 7d, 4w, 3mo, 1y or YYYY-MM-DD
-- `--until` — inclusive end: today, yesterday or YYYY-MM-DD
-
-### `dev ls`
-
-List work in progress across every repo
-
-```
-dev ls [flags]
-```
-
-- `-a, --all` — include done tasks
-- `--dirty` — only tasks with uncommitted changes
-- `--json` — emit JSON for scripting
-- `--live` — only tasks with a running runtime session
-- `--no-session` — skip the runtime query (faster)
-- `-r, --repo` — only tasks whose repo name contains this
-- `-s, --state` — only these states (hot, warm, cold, done)
-
-### `dev mcp`
-
-Inspect static agent MCP server declarations
-
-```
-dev mcp
-```
-
-### `dev mcp list`
-
-List configured MCP server declarations
-
-```
-dev mcp list [flags]
-```
-
-- `--agent` — agent format: claude-code, codex, cursor, gemini-cli, opencode
-- `--all` — scan every configured canonical repository
-- `--json` — emit a stable sanitized JSON envelope
-- `-r, --repo` — scan one repository or explicit checkout path
-- `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
-
-### `dev mcp transfer`
-
-Plan and apply explicit agent artifact transfers
-
-```
-dev mcp transfer
-```
-
-### `dev mcp transfer apply`
-
-Apply one exact reviewed transfer plan
-
-```
-dev mcp transfer apply [flags]
-```
-
-- `--json` — emit a sanitized transfer result
-- `--plan` — exact transfer plan ID
-
-### `dev mcp transfer check`
-
-Explicitly initialize an applied MCP server
-
-```
-dev mcp transfer check <id> [flags]
-```
-
-- `--json` — emit connection evidence without server payloads
-
-### `dev mcp transfer export`
-
-Print an optional credential-free reconstruction recipe
-
-```
-dev mcp transfer export <id> [flags]
-```
-
-- `--entry` — portable recipe entry name
-
-### `dev mcp transfer plan`
-
-Preview a selected transfer without changing agent files
-
-```
-dev mcp transfer plan [flags]
-```
-
-- `--adopt` — adopt an equivalent MCP stanza or explicitly change its managed source
-- `--as` — destination server name
-- `--bind` — destination environment binding SERVER_ENV=PROCESS_ENV
-- `--bridge` — use the installed dev stdio launcher with a host-local binding
-- `--from` — explicit source path within selected scope
-- `--from-agent` — source agent format or skill installation
-- `--from-repo` — source repository or exact checkout
-- `--from-scope` — source scope: project or user/global
-- `--json` — emit a sanitized transfer plan
-- `--mode` — copy, move, mirror, or skill install
-- `--secret-env-file` — explicit local JSON env source for the optional launcher
-- `--server` — one source server name
-- `--to` — explicit destination path within selected scope
-- `--to-agent` — destination agent format or skill installation
-- `--to-repo` — destination repository or exact checkout
-- `--to-scope` — destination scope: project or user/global
-- `--transport` — explicit transport for ambiguous remote declarations
-
-### `dev mcp transfer recipe`
-
-Plan one entry from an optional reconstruction recipe
-
-```
-dev mcp transfer recipe <file> [flags]
-```
-
-- `--entry` — one recipe entry
-- `--json` — emit a sanitized plan
-- `--repo` — repository or exact checkout containing the recipe
-
-### `dev mcp transfer refresh`
-
-Create a reviewed refresh plan
-
-```
-dev mcp transfer refresh <id> [flags]
-```
-
-- `--json` — emit the sanitized plan
-
-### `dev mcp transfer status`
-
-List local transfer plans and operation ledgers
-
-```
-dev mcp transfer status [flags]
-```
-
-- `--json` — emit sanitized operation ledgers
-
-### `dev mcp transfer undo`
-
-Create a reviewed undo plan
-
-```
-dev mcp transfer undo <id> [flags]
-```
-
-- `--json` — emit the sanitized plan
-
-### `dev note`
-
-Capture and search timestamped repository thoughts
-
-```
-dev note
-```
-
-### `dev note add`
-
-Append one thought to a repository
-
-```
-dev note add [thought...] [flags]
-```
-
-- `-e, --editor` — compose the body in VISUAL/EDITOR
-- `--editor-command` — editor command override
-- `-r, --repo` — repository (default: repo containing cwd)
-- `-t, --tag` — tag (repeatable)
-
-### `dev note delete`
-
-Delete one note after confirmation
-
-```
-dev note delete <note-id> [flags]
-```
-
-- `-y, --yes` — do not prompt
-
-### `dev note edit`
-
-Edit one note body safely in VISUAL/EDITOR
-
-```
-dev note edit <note-id> [flags]
-```
-
-- `--editor` — editor command override
-- `-t, --tag` — replace tags (repeatable; omit to preserve)
-
-### `dev note list`
-
-List notes newest-first
-
-```
-dev note list [repo] [flags]
-```
-
-- `-a, --all` — all repositories
-- `--json` — emit JSON
-- `-t, --tag` — only notes with this tag
-
-### `dev note path`
-
-Print the durable Markdown note path
-
-```
-dev note path [repo] [flags]
-```
-
-- `-a, --all` — print the notes root
-
-### `dev note reindex`
-
-Rebuild the disposable SQLite FTS index from Markdown notes
-
-```
-dev note reindex
-```
-
-### `dev note search`
-
-Full-text search note body, tags, and repository
-
-```
-dev note search <query...> [flags]
-```
-
-- `--json` — emit JSON
-- `--limit` — maximum matches
-- `-r, --repo` — scope to this repository
-
-### `dev note show`
-
-Show one complete note
-
-```
-dev note show <note-id> [flags]
-```
-
-- `--json` — emit JSON
-
-### `dev park`
-
-Stop working on a task without losing the thread
-
-```
-dev park [task] [flags]
-```
-
-- `--assume-no-runtime` — continue when runtime enumeration fails
-- `--close-unknown` — allow external closure of unknown runtime status
-- `--cold` — go cold: remove the worktree after confirming everything is pushed
-- `--keep-session` — leave the runtime session open
-- `-n, --next` — what to do when you come back
-- `--note` — free-form note
-- `--push` — push the branch so another machine can pick it up
-- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
-- `--timeout` — maximum time to wait for runtime closure
-- `--wip` — checkpoint uncommitted work as a wip: commit
+- `--aliases` — show supported shortcuts and their canonical destinations
+- `--depth` — tree levels below the selected command; 0 means unlimited
+- `--tree` — show the canonical command tree
 
 ### `dev pr`
 
@@ -1470,203 +1578,6 @@ dev pr list [query] [flags]
 - `--scope` — which surface to query: account, local or all
 - `--state` — request state: open, merged, closed or all
 
-### `dev prepare`
-
-Arm post-writer artifact finalization without closing this agent
-
-```
-dev prepare [task-or-worktree] [flags]
-```
-
-- `--allow-large` — acknowledge adding a new untracked transcript over 2 MiB
-- `--closeout` — handoff lane: product-first or explicit canonical co-commit
-- `--closeout-helper` — explicit installed canonical helper scripts directory (co-commit only)
-- `--json` — emit a versioned preparation result, including retained partial effects
-- `--message-file` — base commit message file for co-commit, without managed provenance trailers
-- `--no-plan` — explicitly select no plan for co-commit
-- `--plan` — exact .claude/plans path to include (repeatable)
-- `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
-- `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
-- `--specstory-path` — exact SpecStory Markdown path matching the selected session and capture root
-
-### `dev prompt`
-
-Render operational context, or hand it to a configured agent
-
-```
-dev prompt
-```
-
-### `dev prompt agents`
-
-List configured agent profiles without private launch details
-
-```
-dev prompt agents [flags]
-```
-
-- `--json` — emit stable structured agent metadata
-
-### `dev prompt list`
-
-List built-in prompt recipes
-
-```
-dev prompt list [flags]
-```
-
-- `--json` — emit structured recipe metadata
-
-### `dev prompt open`
-
-Open an interactive foreground agent in the current terminal
-
-```
-dev prompt open
-```
-
-### `dev prompt open feedback-fix`
-
-Render a verified feedback repair handoff; agent launch requires --agent
-
-```
-dev prompt open feedback-fix <report-id>
-```
-
-### `dev prompt open pr-triage`
-
-Prioritize pull requests you opened or were asked to review
-
-```
-dev prompt open pr-triage [query] [flags]
-```
-
-- `--all-repos` — query every discovered repository, not only ones dev has a task for
-- `--limit` — cap the rows rendered
-- `--linked` — only requests with a checked-out local branch
-- `--repo` — restrict to these owner/name repositories
-- `--role` — limit to author or reviewer (default both)
-- `--scope` — which surface to query: account, local or all
-- `--state` — request state: open, merged, closed or all
-
-### `dev prompt open session-close`
-
-Review live agent sessions and what must be saved before closing
-
-```
-dev prompt open session-close
-```
-
-### `dev prompt open workspace-closeout`
-
-Review which tasks and worktrees should finish, park, retire, or be inspected
-
-```
-dev prompt open workspace-closeout [repo-or-checkout] [flags]
-```
-
-- `--base` — base for auditing unmanaged linked worktrees
-
-### `dev prompt render`
-
-Render a built-in prompt to stdout
-
-```
-dev prompt render
-```
-
-### `dev prompt render feedback-fix`
-
-Render a verified feedback repair handoff; agent launch requires --agent
-
-```
-dev prompt render feedback-fix <report-id>
-```
-
-### `dev prompt render pr-triage`
-
-Prioritize pull requests you opened or were asked to review
-
-```
-dev prompt render pr-triage [query] [flags]
-```
-
-- `--all-repos` — query every discovered repository, not only ones dev has a task for
-- `--limit` — cap the rows rendered
-- `--linked` — only requests with a checked-out local branch
-- `--repo` — restrict to these owner/name repositories
-- `--role` — limit to author or reviewer (default both)
-- `--scope` — which surface to query: account, local or all
-- `--state` — request state: open, merged, closed or all
-
-### `dev prompt render session-close`
-
-Review live agent sessions and what must be saved before closing
-
-```
-dev prompt render session-close
-```
-
-### `dev prompt render workspace-closeout`
-
-Review which tasks and worktrees should finish, park, retire, or be inspected
-
-```
-dev prompt render workspace-closeout [repo-or-checkout] [flags]
-```
-
-- `--base` — base for auditing unmanaged linked worktrees
-
-### `dev prompt run`
-
-Run a one-shot agent with a built-in prompt
-
-```
-dev prompt run
-```
-
-### `dev prompt run feedback-fix`
-
-Render a verified feedback repair handoff; agent launch requires --agent
-
-```
-dev prompt run feedback-fix <report-id>
-```
-
-### `dev prompt run pr-triage`
-
-Prioritize pull requests you opened or were asked to review
-
-```
-dev prompt run pr-triage [query] [flags]
-```
-
-- `--all-repos` — query every discovered repository, not only ones dev has a task for
-- `--limit` — cap the rows rendered
-- `--linked` — only requests with a checked-out local branch
-- `--repo` — restrict to these owner/name repositories
-- `--role` — limit to author or reviewer (default both)
-- `--scope` — which surface to query: account, local or all
-- `--state` — request state: open, merged, closed or all
-
-### `dev prompt run session-close`
-
-Review live agent sessions and what must be saved before closing
-
-```
-dev prompt run session-close
-```
-
-### `dev prompt run workspace-closeout`
-
-Review which tasks and worktrees should finish, park, retire, or be inspected
-
-```
-dev prompt run workspace-closeout [repo-or-checkout] [flags]
-```
-
-- `--base` — base for auditing unmanaged linked worktrees
-
 ### `dev repo`
 
 List, clone, create and sync repositories
@@ -1690,6 +1601,27 @@ dev repo add-as-submodule [source] [path] [flags]
 - `--ref` — commit, tag or branch to pin; requires --checkout=pinned
 - `--submodules` — initialize descendants: recursive or none (default: parent policy)
 - `--yes` — approve cloning and staging without confirmation
+
+### `dev repo bootstrap`
+
+Discover and optionally organise an existing machine without breaking its layout
+
+```
+dev repo bootstrap [path...] [flags]
+```
+
+- `--apply` — apply the ready index or move actions
+- `--config-out` — write a new config.toml for the resulting roots
+- `--follow-symlinks` — follow symlinked container directories with cycle detection
+- `--force-config` — overwrite config-out if it exists
+- `--index` — plan a non-destructive symlink catalog at this path
+- `--json` — emit the scan as JSON
+- `--layout` — target layout: flat or preserve
+- `--max-depth` — recursive depth; 0 means unlimited
+- `--move` — plan physical repository moves into this path
+- `--relative-links` — use relative symlink payloads in an index
+- `--worktrees` — include linked worktrees in the report
+- `--yes` — with --move --apply, do not confirm each repository
 
 ### `dev repo browse`
 
@@ -1743,6 +1675,14 @@ dev repo context [repo] [flags]
 
 - `--json` — emit the additive schema-v1 JSON report
 - `--refresh` — refresh external forge and configured fleet observations
+
+### `dev repo flow`
+
+Preview: inspect and run guarded repository lifecycle actions
+
+```
+dev repo flow [repo]
+```
 
 ### `dev repo list`
 
@@ -1815,6 +1755,100 @@ dev repo new [name|clone-ref] [flags]
 - `--template-subdir` — relative directory within --template to use as the repository root
 - `--visibility` — upstream visibility: private, public or internal
 - `-y, --yes` — confirm the non-interactive scaffold plan
+
+### `dev repo note`
+
+Capture and search timestamped repository thoughts
+
+```
+dev repo note
+```
+
+### `dev repo note add`
+
+Append one thought to a repository
+
+```
+dev repo note add [thought...] [flags]
+```
+
+- `-e, --editor` — compose the body in VISUAL/EDITOR
+- `--editor-command` — editor command override
+- `-r, --repo` — repository (default: repo containing cwd)
+- `-t, --tag` — tag (repeatable)
+
+### `dev repo note delete`
+
+Delete one note after confirmation
+
+```
+dev repo note delete <note-id> [flags]
+```
+
+- `-y, --yes` — do not prompt
+
+### `dev repo note edit`
+
+Edit one note body safely in VISUAL/EDITOR
+
+```
+dev repo note edit <note-id> [flags]
+```
+
+- `--editor` — editor command override
+- `-t, --tag` — replace tags (repeatable; omit to preserve)
+
+### `dev repo note list`
+
+List notes newest-first
+
+```
+dev repo note list [repo] [flags]
+```
+
+- `-a, --all` — all repositories
+- `--json` — emit JSON
+- `-t, --tag` — only notes with this tag
+
+### `dev repo note path`
+
+Print the durable Markdown note path
+
+```
+dev repo note path [repo] [flags]
+```
+
+- `-a, --all` — print the notes root
+
+### `dev repo note reindex`
+
+Rebuild the disposable SQLite FTS index from Markdown notes
+
+```
+dev repo note reindex
+```
+
+### `dev repo note search`
+
+Full-text search note body, tags, and repository
+
+```
+dev repo note search <query...> [flags]
+```
+
+- `--json` — emit JSON
+- `--limit` — maximum matches
+- `-r, --repo` — scope to this repository
+
+### `dev repo note show`
+
+Show one complete note
+
+```
+dev repo note show <note-id> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev repo open`
 
@@ -1893,252 +1927,291 @@ dev repo sync [repo] [flags]
 
 - `-a, --all` — every repository under the scan roots
 
-### `dev resume`
+### `dev self`
 
-Pick a task back up, rebuilding whatever is missing
-
-```
-dev resume <task> [flags]
-```
-
-- `--fetch` — fetch from origin first
-- `--force` — take ownership of a task owned by another machine
-- `--no-provision` — skip dependency install when rebuilding a worktree
-
-### `dev retire`
-
-Close runtime state and safely remove an integrated worktree
+Configure, diagnose and maintain dev itself
 
 ```
-dev retire [task-or-worktree] [flags]
+dev self
 ```
 
-- `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
-- `--base` — containment base override: local branch, remote-tracking ref such as origin/main, or commit
-- `--close-unknown` — allow an external caller to close unknown/empty runtime status
-- `--delete-branch` — delete the contained local branch after worktree removal
-- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
-- `--timeout` — maximum time to wait for runtime sessions to close
+### `dev self cache`
 
-### `dev shell-init`
+Inspect and clear regenerable dev caches
+
+```
+dev self cache
+```
+
+### `dev self cache clear`
+
+Remove a regenerable cache
+
+```
+dev self cache clear <skills|repos|remote|notes|fleet|ssh-discovery|size|gitignore|licenses|all>
+```
+
+### `dev self cache list`
+
+List cache paths, sizes, and ages
+
+```
+dev self cache list
+```
+
+### `dev self cache path`
+
+Print dev's XDG cache directory
+
+```
+dev self cache path
+```
+
+### `dev self completion`
+
+Generate shell completion scripts
+
+```
+dev self completion
+```
+
+### `dev self completion bash`
+
+Generate the autocompletion script for bash
+
+```
+dev self completion bash [flags]
+```
+
+- `--no-descriptions` — disable completion descriptions
+
+### `dev self completion fish`
+
+Generate the autocompletion script for fish
+
+```
+dev self completion fish [flags]
+```
+
+- `--no-descriptions` — disable completion descriptions
+
+### `dev self completion powershell`
+
+Generate the autocompletion script for powershell
+
+```
+dev self completion powershell [flags]
+```
+
+- `--no-descriptions` — disable completion descriptions
+
+### `dev self completion zsh`
+
+Generate the autocompletion script for zsh
+
+```
+dev self completion zsh [flags]
+```
+
+- `--no-descriptions` — disable completion descriptions
+
+### `dev self config`
+
+Show, edit, initialise and locate dev's configuration
+
+```
+dev self config
+```
+
+### `dev self config edit`
+
+Open this config in $VISUAL or $EDITOR
+
+```
+dev self config edit [flags]
+```
+
+- `--editor` — editor command, overriding $VISUAL and $EDITOR
+- `--project` — edit .dev-cli/config.toml in the current repository
+
+### `dev self config init`
+
+Write a starter config.toml, detecting this machine's layout
+
+```
+dev self config init [flags]
+```
+
+- `-f, --force` — overwrite an existing config
+- `--stdout` — print the generated config instead of writing it
+
+### `dev self config path`
+
+Print the global or project config file path
+
+```
+dev self config path [repo] [flags]
+```
+
+- `--project` — print the current/selected repository config path
+
+### `dev self config scaffolds`
+
+Show, edit, initialise and locate repository scaffold presets
+
+```
+dev self config scaffolds
+```
+
+### `dev self config scaffolds edit`
+
+Open scaffolds.toml in an editor
+
+```
+dev self config scaffolds edit [flags]
+```
+
+- `--editor` — editor command, overriding $VISUAL and $EDITOR
+
+### `dev self config scaffolds init`
+
+Write a starter scaffolds.toml
+
+```
+dev self config scaffolds init [flags]
+```
+
+- `-f, --force` — overwrite an existing file
+- `--stdout` — print instead of writing
+
+### `dev self config scaffolds path`
+
+Print the scaffold config path
+
+```
+dev self config scaffolds path
+```
+
+### `dev self config scaffolds show`
+
+Print the effective scaffold catalog
+
+```
+dev self config scaffolds show
+```
+
+### `dev self config show`
+
+Print the effective global or project configuration
+
+```
+dev self config show [repo] [flags]
+```
+
+- `--project` — show the current/selected repository overlay
+
+### `dev self config trust`
+
+Approve or revoke executable project configuration by content hash
+
+```
+dev self config trust [repo] [flags]
+```
+
+- `--list` — list trusted repository hashes
+- `--revoke` — remove trust for this repository
+- `-y, --yes` — approve without prompting
+
+### `dev self doctor`
+
+Check dependencies, paths and runtime backends
+
+```
+dev self doctor
+```
+
+### `dev self feedback`
+
+Prepare a local report, publish reviewed feedback, or plan an isolated fix
+
+```
+dev self feedback
+```
+
+### `dev self feedback draft`
+
+Save a private local report and a sanitized public issue draft
+
+```
+dev self feedback draft [flags]
+```
+
+- `--body-file` — Markdown reproduction/expected/actual body file; - reads stdin
+- `--diagnostic` — local schema-v1 ssh diagnose JSON to project into public evidence
+- `--json` — emit the saved report ID, paths and next commands
+- `--title` — short report title
+
+### `dev self feedback issue`
+
+Preview, search for, or explicitly publish reviewed GitHub feedback
+
+```
+dev self feedback issue <id> [flags]
+```
+
+- `--existing` — comment on this exact existing issue instead of creating a new issue
+- `--json` — emit one versioned preview or publication result
+- `--publish` — publish the reviewed issue or comment
+- `--repo` — explicit [host/]owner/name issue target
+- `--revision` — exact content/target revision from preview
+- `--search` — explicitly query related GitHub issues
+- `--yes` — confirm publication of the supplied revision without prompting
+
+### `dev self feedback repair`
+
+Plan or prepare an isolated repair checkout without starting an agent
+
+```
+dev self feedback repair <id> [flags]
+```
+
+- `--apply` — create only the checkout/task described by the saved plan
+- `--base` — explicit local base ref for the repair branch
+- `--json` — emit one versioned repair plan or result
+- `--plan` — exact saved repair plan ID to apply
+- `--repo` — exact local dev-cli source checkout
+- `--yes` — confirm the saved repair plan without prompting
+
+### `dev self shell-init`
 
 Print the shell wrapper that lets dev change your directory
 
 ```
-dev shell-init <bash|zsh|fish|powershell>
+dev self shell-init <bash|zsh|fish|powershell>
 ```
 
-### `dev skill`
+### `dev self upgrade`
 
-Inspect agent skills and manage dev's bundled skill
-
-```
-dev skill [flags]
-```
-
-### `dev skill add`
-
-Open the interactive skills installer
+Update dev to the latest published release
 
 ```
-dev skill add [package]
+dev self upgrade [flags]
 ```
 
-### `dev skill install`
+- `--check` — report whether a newer release exists and exit
+- `--force` — run the update path even if this build is already current
+- `-y, --yes` — do not prompt before updating
 
-Install the skill into the agent skills directory
+### `dev self version`
 
-```
-dev skill install [flags]
-```
-
-- `--check` — compare installed content with this binary without writing
-- `--dir` — install directory (default: ~/.agents/skills/dev-cli)
-- `--if-installed` — refresh only an existing install, preserving links and recorded local edits
-- `--no-link` — do not symlink into per-tool skill directories
-
-### `dev skill list`
-
-List project and global agent skills
+Report the running version, and optionally whether it is current
 
 ```
-dev skill list [flags]
+dev self version [flags]
 ```
 
-- `--all` — scan every configured canonical repository
-- `--check` — contact Git sources and check for updates without installing them
-- `-g, --global` — list global skills
-- `--json` — emit a stable machine-readable JSON array
-- `-p, --project` — list project skills
-- `-r, --repo` — scan one repository or explicit checkout path
-
-### `dev skill manage`
-
-Check, update, remove or restore skills with a scoped wizard
-
-```
-dev skill manage [flags]
-```
-
-- `--all` — choose among configured repositories with skills-lock.json
-- `-r, --repo` — start with one repository or exact checkout
-
-### `dev skill print`
-
-Print SKILL.md to stdout
-
-```
-dev skill print
-```
-
-### `dev skill sync`
-
-Regenerate the skill's command reference from the live command tree
-
-```
-dev skill sync [flags]
-```
-
-- `--check` — report drift and exit non-zero instead of writing
-- `-h, --help` — help for sync
-
-### `dev skill transfer`
-
-Plan and apply explicit agent artifact transfers
-
-```
-dev skill transfer
-```
-
-### `dev skill transfer apply`
-
-Apply one exact reviewed transfer plan
-
-```
-dev skill transfer apply [flags]
-```
-
-- `--json` — emit a sanitized transfer result
-- `--plan` — exact transfer plan ID
-
-### `dev skill transfer export`
-
-Print an optional credential-free reconstruction recipe
-
-```
-dev skill transfer export <id> [flags]
-```
-
-- `--entry` — portable recipe entry name
-
-### `dev skill transfer plan`
-
-Preview a selected transfer without changing agent files
-
-```
-dev skill transfer plan <skill> [flags]
-```
-
-- `--as` — destination skill directory name
-- `--from` — explicit source path within selected scope
-- `--from-agent` — source agent format or skill installation
-- `--from-repo` — source repository or exact checkout
-- `--from-scope` — source scope: project or user/global
-- `--json` — emit a sanitized transfer plan
-- `--mode` — copy, move, mirror, or skill install
-- `--prepared` — verified upstream preparation ID
-- `--to` — explicit destination path within selected scope
-- `--to-agent` — destination agent format or skill installation
-- `--to-repo` — destination repository or exact checkout
-- `--to-scope` — destination scope: project or user/global
-
-### `dev skill transfer prepare`
-
-Fetch and verify one skill in private staging
-
-```
-dev skill transfer prepare <skill> [flags]
-```
-
-- `--as` — destination skill directory name
-- `--from` — explicit source path within selected scope
-- `--from-agent` — source agent format or skill installation
-- `--from-repo` — source repository or exact checkout
-- `--from-scope` — source scope: project or user/global
-- `--json` — emit a sanitized transfer plan
-- `--mode` — copy, move, mirror, or skill install
-- `--prepared` — verified upstream preparation ID
-- `--to` — explicit destination path within selected scope
-- `--to-agent` — destination agent format or skill installation
-- `--to-repo` — destination repository or exact checkout
-- `--to-scope` — destination scope: project or user/global
-
-### `dev skill transfer recipe`
-
-Plan one entry from an optional reconstruction recipe
-
-```
-dev skill transfer recipe <file> [flags]
-```
-
-- `--entry` — one recipe entry
-- `--json` — emit a sanitized plan
-- `--repo` — repository or exact checkout containing the recipe
-
-### `dev skill transfer refresh`
-
-Create a reviewed refresh plan
-
-```
-dev skill transfer refresh <id> [flags]
-```
-
-- `--json` — emit the sanitized plan
-
-### `dev skill transfer status`
-
-List local transfer plans and operation ledgers
-
-```
-dev skill transfer status [flags]
-```
-
-- `--json` — emit sanitized operation ledgers
-
-### `dev skill transfer undo`
-
-Create a reviewed undo plan
-
-```
-dev skill transfer undo <id> [flags]
-```
-
-- `--json` — emit the sanitized plan
-
-### `dev skill uninstall`
-
-Remove dev's installed bundled skill and its matching agent links
-
-```
-dev skill uninstall [flags]
-```
-
-- `--dir` — installation directory (default: ~/.agents/skills/dev-cli)
-- `--dry-run` — show the removal preview without changing files
-- `-y, --yes` — confirm the displayed file and link removal
-
-### `dev skill update`
-
-Update one skill in one explicit scope
-
-```
-dev skill update <skill> [flags]
-```
-
-- `-g, --global` — update the global skill
-- `-p, --project` — update the project-scoped skill
-- `-r, --repo` — project repository or explicit checkout path
-- `-y, --yes` — skip dev's confirmation
+- `--check` — ask GitHub for the newest published release
+- `--refresh` — ignore the cached answer from a previous --check
 
 ### `dev snippet`
 
@@ -2568,97 +2641,6 @@ dev ssh show <alias> [flags]
 
 - `--json` — emit one versioned JSON object
 
-### `dev start`
-
-Track work directly, on a canonical branch, or in an isolated worktree
-
-```
-dev start [repo] [flags]
-```
-
-- `--base` — ref a new branch starts from (default: repo default branch)
-- `-b, --branch` — branch name (default: feat/<task-slug>)
-- `--branch-only` — create/switch a branch in the canonical checkout; no worktree
-- `--direct` — track work on the currently checked-out branch; create no branch/worktree
-- `--focus` — focus the new runtime session
-- `--json` — emit one machine-readable creation result
-- `--next` — the first next action to record
-- `--no-provision` — skip dependency install and ignored-file copying
-- `--run` — send a shell command to the newly created Herdr worktree pane
-- `--submodule` — submodule path to develop on the task branch (repeatable)
-- `--submodule-base` — submodule integration target PATH=REF (repeatable)
-- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
-- `-t, --task` — human name for this change stream
-
-### `dev stats`
-
-Show where development time actually went
-
-```
-dev stats [flags]
-```
-
-- `--by-repo` — show only the per-repo breakdown
-- `--heatmap` — show the day grid (shown by default unless --by-repo)
-- `--limit` — maximum repositories in the breakdown (0 for all)
-- `-r, --repo` — limit to repositories matching this
-- `--since` — window: 30d, 6mo, 1y, or a YYYY-MM-DD date
-- `--source` — limit to these sources (session, git, wakatime)
-
-### `dev stats backfill`
-
-Seed the database from git commit history
-
-```
-dev stats backfill [flags]
-```
-
-- `--author` — only commits from this author email
-- `-r, --repo` — backfill only this repository
-- `--since` — how far back to scan
-
-### `dev stats clear`
-
-Delete selected activity data (this is durable data, not cache)
-
-```
-dev stats clear [flags]
-```
-
-- `--all` — delete all activity and collector checkpoints
-- `-r, --repo` — delete this exact repository name
-- `--source` — delete these sources: session, git, wakatime
-- `-y, --yes` — do not prompt
-
-### `dev stats import-wakatime`
-
-Import per-project daily totals from WakaTime
-
-```
-dev stats import-wakatime [flags]
-```
-
-- `--since` — how far back to import
-
-### `dev stats path`
-
-Print the durable activity database path
-
-```
-dev stats path
-```
-
-### `dev stats sample`
-
-Record one interval of live session activity
-
-```
-dev stats sample [flags]
-```
-
-- `--include-idle` — also count sessions whose agent is idle
-- `--interval` — time to attribute, matching how often this runs
-
 ### `dev status`
 
 Show the full context of the current directory
@@ -2666,70 +2648,6 @@ Show the full context of the current directory
 ```
 dev status
 ```
-
-### `dev submodule`
-
-Inspect, initialize and develop the submodules of a workspace
-
-```
-dev submodule
-```
-
-### `dev submodule add`
-
-Add a known repository or network URL as a submodule of this checkout
-
-```
-dev submodule add [source] [path] [flags]
-```
-
-- `--checkout` — new child checkout mode: pinned or default-branch
-- `--dry-run` — report a local plan without fetching or writing
-- `--json` — emit a structured plan or partial result without prompts
-- `--parent` — exact parent checkout (default: nearest repository containing cwd)
-- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
-- `--submodules` — initialize descendants: recursive or none (default: parent policy)
-- `--yes` — approve cloning and staging without confirmation
-
-### `dev submodule develop`
-
-Add selected submodules to the current managed task branch
-
-```
-dev submodule develop <path>... [flags]
-```
-
-- `--submodule-base` — submodule integration target PATH=REF (repeatable)
-
-### `dev submodule init`
-
-Initialize missing submodules at their gitlinks; preserve existing checkouts
-
-```
-dev submodule init [flags]
-```
-
-- `--dry-run` — inspect without initializing or contacting remotes
-
-### `dev submodule recover`
-
-Restore child repositories retained after interrupted recursive cleanup
-
-```
-dev submodule recover <journal.json> [flags]
-```
-
-- `--dry-run` — validate the recovery journal without changing files
-
-### `dev submodule status`
-
-Read the recursive gitlink and checkout graph without network access
-
-```
-dev submodule status [flags]
-```
-
-- `--json` — emit the submodule graph as JSON
 
 ### `dev summary`
 
@@ -2745,27 +2663,6 @@ dev summary [query] [flags]
 - `--json` — emit the complete stable JSON snapshot
 - `--recent-commits` — recent commits per Git project (0 to omit)
 - `--sizes` — include cached or measured logical disk usage
-
-### `dev sweep`
-
-Review stale tasks and drifted state, and act on them
-
-```
-dev sweep [flags]
-```
-
-- `--apply` — act on the suggestions instead of only reporting
-- `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — explicit containment base (branch, remote-tracking ref or commit) for DONE retirement, merged worktrees or ephemeral branch deletion
-- `--close-unknown` — allow external closure of unknown runtime status during retirement
-- `--delete-branches` — also delete contained local branches after worktree retirement
-- `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
-- `--json` — print the versioned ephemeral-worktree report as JSON
-- `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
-- `--recursive` — include guarded disposal of workspace-owned submodule clones
-- `--stale-days` — days without relevant activity before an item counts as stale
-- `--task` — limit ordinary recovery suggestions to one exact task ID
-- `--yes` — with --apply, do not confirm each change
 
 ### `dev triage`
 
@@ -2821,6 +2718,17 @@ dev tries delete <ref> [flags]
 - `--permanent` — permanently discard all Try contents instead of using Trash
 - `--yes` — approve moving the selected Try to Trash
 
+### `dev tries demote`
+
+Move a previously graduated project back to Tries
+
+```
+dev tries demote <repo-or-path-or-catalog-id> [flags]
+```
+
+- `--dry-run` — preview the guarded move without changing files or catalog metadata
+- `--to` — explicit unoccupied destination directly under tries_root
+
 ### `dev tries deprecate`
 
 Mark a Try deprecated without moving it
@@ -2850,11 +2758,16 @@ dev tries graduate [try] [flags]
 ```
 
 - `-c, --category` — category subdirectory under project_root
-- `--dry-run` — show what would happen without moving anything
-- `--name` — project name (default: the try name without its date prefix)
-- `--private` — create the remote as private
-- `--push` — push after creating the remote
-- `--remote` — create a remote repository with gh or glab
+- `--dry-run` — preview without prompting, applying or probing forge authentication
+- `--forge` — upstream provider: auto, github, gitlab or none; github/gitlab selects creation
+- `--name` — project name (default: remembered name, otherwise the Try name without its date prefix)
+- `--namespace` — GitHub owner/org or GitLab namespace for upstream creation
+- `--private` — create a private upstream (compatibility flag)
+- `--push` — push current branch commits (creation: true; existing URL: false unless explicitly set)
+- `--remote` — create a GitHub or GitLab upstream
+- `--remote-url` — add an existing repository URL as origin without creating a remote repository
+- `--visibility` — upstream visibility: private, public, or internal (GitLab only)
+- `-y, --yes` — use the supplied options without the interactive wizard
 
 ### `dev tries list`
 
@@ -2916,12 +2829,12 @@ Record explicit activity for a present Try
 dev tries touch <ref>
 ```
 
-### `dev try`
+### `dev tries try`
 
 Make a dated scratch directory for an experiment
 
 ```
-dev try [name] [flags]
+dev tries try [name] [flags]
 ```
 
 - `--clone` — clone a repository into the new try
@@ -2944,108 +2857,211 @@ List the external tool bindings and whether each one works here
 dev tui tools
 ```
 
-### `dev upgrade`
+### `dev work`
 
-Update dev to the latest published release
-
-```
-dev upgrade [flags]
-```
-
-- `--check` — report whether a newer release exists and exit
-- `--force` — run the update path even if this build is already current
-- `-y, --yes` — do not prompt before updating
-
-### `dev version`
-
-Report the running version, and optionally whether it is current
+Start, pause, resume and finish tracked work
 
 ```
-dev version [flags]
+dev work
 ```
 
-- `--check` — ask GitHub for the newest published release
-- `--refresh` — ignore the cached answer from a previous --check
+### `dev work adopt`
 
-### `dev wt`
-
-Create, list, open and remove worktrees
+Import existing worktrees, sessions and branches as tasks
 
 ```
-dev wt
+dev work adopt [flags]
 ```
 
-### `dev wt create`
+- `--apply` — record the candidates as tasks
+- `--no-branches` — skip local branches ahead of their base
+- `--no-sessions` — skip live runtime sessions
+- `--no-worktrees` — skip existing linked worktrees
+- `--state` — state to record adopted tasks in (hot, warm, cold, done)
+- `--yes` — with --apply, do not confirm each one
 
-Create a worktree at the configured path and provision it
+### `dev work done`
 
-```
-dev wt create <branch> [flags]
-```
-
-- `--base` — ref a new branch starts from
-- `--label` — runtime session label
-- `--no-provision` — skip dependency install and gitignored-file copying
-- `--no-session` — do not open a runtime session
-- `--path` — override the templated location
-- `-r, --repo` — repository (default: the current one)
-- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
-
-### `dev wt list`
-
-List the worktrees of a repository
+Finish a task with optional worktree retirement
 
 ```
-dev wt list [flags]
+dev work done [task] [flags]
 ```
 
-- `-r, --repo` — repository (default: the current one)
+- `--base-ref` — base ref used to verify --merged (default: recorded base)
+- `--confirm-squash` — attest that this contained commit represents a squash merge
+- `--delete-branch` — deprecated here: use dev retire --delete-branch
+- `--dirty` — dirty checkout policy: auto, fail, commit or discard
+- `--ff` — rebase onto the base and fast-forward it
+- `--keep-worktree` — deprecated: worktrees are always kept until dev retire
+- `--merged` — verify an externally merged branch and mark the task done
+- `-m, --message` — commit message for --dirty=commit
+- `--pr` — push and open a pull/merge request instead of merging locally
+- `--push` — push the resulting base (direct mode pushes its current branch)
+- `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
-### `dev wt open`
+### `dev work list`
 
-Open an existing worktree in the runtime
-
-```
-dev wt open <branch> [flags]
-```
-
-- `--no-focus` — open or reuse the runtime without switching, attaching, or changing shell directory
-- `-r, --repo` — repository (default: the current one)
-
-### `dev wt plan`
-
-Show what a new worktree of this repo would be provisioned with
-
-```
-dev wt plan [flags]
-```
-
-- `-r, --repo` — repository (default: the current one)
-- `--write` — seed .dev-cli/config.toml in the repository from what was detected
-
-### `dev wt provision`
-
-Re-run provisioning for an existing worktree
+List work in progress across every repo
 
 ```
-dev wt provision [path] [flags]
+dev work list [flags]
 ```
 
-- `--dry-run` — show the plan instead of applying it
+- `-a, --all` — include done tasks
+- `--dirty` — only tasks with uncommitted changes
+- `--json` — emit JSON for scripting
+- `--live` — only tasks with a running runtime session
+- `--no-session` — skip the runtime query (faster)
+- `-r, --repo` — only tasks whose repo name contains this
+- `-s, --state` — only these states (hot, warm, cold, done)
 
-### `dev wt rm`
+### `dev work park`
 
-Remove a worktree checkout (never the branch)
+Stop working on a task without losing the thread
 
 ```
-dev wt rm <branch> [flags]
+dev work park [task] [flags]
 ```
 
 - `--assume-no-runtime` — continue when runtime enumeration fails
 - `--close-unknown` — allow external closure of unknown runtime status
-- `-f, --force` — remove even with uncommitted changes (never bypasses caller/runtime safety)
+- `--cold` — go cold: remove the worktree after confirming everything is pushed
+- `--keep-session` — leave the runtime session open
+- `-n, --next` — what to do when you come back
+- `--note` — free-form note
+- `--push` — push the branch so another machine can pick it up
 - `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
-- `-r, --repo` — repository (default: the current one)
 - `--timeout` — maximum time to wait for runtime closure
+- `--wip` — checkpoint uncommitted work as a wip: commit
+
+### `dev work resume`
+
+Pick a task back up, rebuilding whatever is missing
+
+```
+dev work resume <task> [flags]
+```
+
+- `--fetch` — fetch from origin first
+- `--force` — take ownership of a task owned by another machine
+- `--no-provision` — skip dependency install when rebuilding a worktree
+
+### `dev work retire`
+
+Close runtime state and safely remove an integrated worktree
+
+```
+dev work retire [task-or-worktree] [flags]
+```
+
+- `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
+- `--base` — containment base override: local branch, remote-tracking ref such as origin/main, or commit
+- `--close-unknown` — allow an external caller to close unknown/empty runtime status
+- `--delete-branch` — delete the contained local branch after worktree removal
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
+- `--timeout` — maximum time to wait for runtime sessions to close
+
+### `dev work start`
+
+Track work directly, on a canonical branch, or in an isolated worktree
+
+```
+dev work start [repo] [flags]
+```
+
+- `--base` — ref a new branch starts from (default: repo default branch)
+- `-b, --branch` — branch name (default: feat/<task-slug>)
+- `--branch-only` — create/switch a branch in the canonical checkout; no worktree
+- `--direct` — track work on the currently checked-out branch; create no branch/worktree
+- `--focus` — focus the new runtime session
+- `--json` — emit one machine-readable creation result
+- `--next` — the first next action to record
+- `--no-provision` — skip dependency install and ignored-file copying
+- `--run` — send a shell command to the newly created Herdr worktree pane
+- `--submodule` — submodule path to develop on the task branch (repeatable)
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
+- `-t, --task` — human name for this change stream
+
+### `dev work sweep`
+
+Review stale tasks and drifted state, and act on them
+
+```
+dev work sweep [flags]
+```
+
+- `--apply` — act on the suggestions instead of only reporting
+- `--assume-no-runtime` — continue when runtime enumeration fails during retirement
+- `--base` — explicit containment base (branch, remote-tracking ref or commit) for DONE retirement, merged worktrees or ephemeral branch deletion
+- `--close-unknown` — allow external closure of unknown runtime status during retirement
+- `--delete-branches` — also delete contained local branches after worktree retirement
+- `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
+- `--json` — print the versioned ephemeral-worktree report as JSON
+- `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
+- `--recursive` — include guarded disposal of workspace-owned submodule clones
+- `--stale-days` — days without relevant activity before an item counts as stale
+- `--task` — limit ordinary recovery suggestions to one exact task ID
+- `--yes` — with --apply, do not confirm each change
+
+### Supported shortcuts
+
+These built-in routes remain supported. Canonical commands are documented above.
+
+| Shortcut | Canonical command | Behavior |
+|---|---|---|
+| `dev adopt` | `dev work adopt` |  |
+| `dev agent skill ls` | `dev agent skill list` |  |
+| `dev agent skill status` | `dev agent skill list` |  |
+| `dev artifact` | `dev agent artifact` |  |
+| `dev bootstrap` | `dev repo bootstrap` |  |
+| `dev browse` | `dev repo browse` |  |
+| `dev cache` | `dev self cache` |  |
+| `dev completion` | `dev self completion` |  |
+| `dev config` | `dev self config` |  |
+| `dev doctor` | `dev self doctor` |  |
+| `dev done` | `dev work done` |  |
+| `dev edit` | `dev self config edit` |  |
+| `dev feedback` | `dev self feedback` |  |
+| `dev flow` | `dev repo flow` |  |
+| `dev gist` | `dev snippet` | GitHub only (--forge github) |
+| `dev git worktree remove` | `dev git worktree rm` |  |
+| `dev gitignore` | `dev git ignore` |  |
+| `dev graduate` | `dev tries graduate` |  |
+| `dev hygiene` | `dev git hygiene` |  |
+| `dev ignore` | `dev git ignore` |  |
+| `dev instructions` | `dev agent instructions` |  |
+| `dev journal` | `dev activity journal` |  |
+| `dev list` | `dev work list` |  |
+| `dev ls` | `dev work list` |  |
+| `dev mcp` | `dev agent mcp` |  |
+| `dev note` | `dev repo note` |  |
+| `dev park` | `dev work park` |  |
+| `dev pr ls` | `dev pr list` |  |
+| `dev prepare` | `dev agent artifact prepare` |  |
+| `dev prompt` | `dev agent prompt` |  |
+| `dev repo create` | `dev repo new` |  |
+| `dev repo ls` | `dev repo list` |  |
+| `dev repo note rm` | `dev repo note delete` |  |
+| `dev repo search` | `dev repo remote` |  |
+| `dev resume` | `dev work resume` |  |
+| `dev retire` | `dev work retire` |  |
+| `dev shell-init` | `dev self shell-init` |  |
+| `dev skill` | `dev agent skill` |  |
+| `dev snippet ls` | `dev snippet list` |  |
+| `dev snippet new` | `dev snippet create` |  |
+| `dev start` | `dev work start` |  |
+| `dev stats` | `dev activity stats` |  |
+| `dev submodule` | `dev git submodule` |  |
+| `dev sweep` | `dev work sweep` |  |
+| `dev tries abandon` | `dev tries deprecate` |  |
+| `dev tries rm` | `dev tries delete` |  |
+| `dev try` | `dev tries try` | create or open; no argument lists Tries |
+| `dev upgrade` | `dev self upgrade` |  |
+| `dev version` | `dev self version` |  |
+| `dev work ls` | `dev work list` |  |
+| `dev worktree` | `dev git worktree` |  |
+| `dev wt` | `dev git worktree` |  |
 
 <!-- END GENERATED COMMANDS -->

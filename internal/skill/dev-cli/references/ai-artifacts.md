@@ -44,15 +44,15 @@ The default `product-first` handoff requires committed product changes and an
 empty index; it does not stage the still-changing transcript:
 
 ```bash
-dev hygiene status
-dev hygiene scan --scope staged --json
-dev prepare --session codex:<uuid>
+dev git hygiene status
+dev git hygiene scan --scope staged --json
+dev agent artifact prepare --session codex:<uuid>
 # After the exact recorder has stopped, from outside its checkout:
-dev artifact finalize --intent <id> --writer-stopped
+dev agent artifact finalize --intent <id> --writer-stopped
 ```
 
 Preparation does not stop the writer. Never repeatedly redact a file that a
-recorder is still rewriting from its native source. `dev hygiene redact` requires
+recorder is still rewriting from its native source. `dev git hygiene redact` requires
 an exact reviewed plan; artifact writes additionally require post-writer proof.
 Private recovery and a stable byte snapshot do not prove that a process exited.
 
@@ -76,7 +76,7 @@ worktree; ignored does not mean disposable or backed up.
 
 ## Exact selection and co-commit closeout (v0.2.40)
 
-`dev prepare --specstory-path PATH` optionally selects one exact Markdown file
+`dev agent artifact prepare --specstory-path PATH` optionally selects one exact Markdown file
 when several exports share a session. The persisted selection must match the
 provider and UUID in its strict SpecStory preamble and stay within the configured
 capture scope: `.specstory/history/` for source commits, or the archive policy's
@@ -108,7 +108,7 @@ native backend. Existing v1 journals are not silently upgraded.
 3. From that wrapped agent, queue the exact handoff:
 
    ```bash
-   dev prepare --closeout co-commit --session 'claude:<uuid>' \
+   dev agent artifact prepare --closeout co-commit --session 'claude:<uuid>' \
      --specstory-path .specstory/history/session.md \
      --plan .claude/plans/task.md --message-file /path/to/commit-message.txt --json
    ```
@@ -129,8 +129,8 @@ native backend. Existing v1 journals are not silently upgraded.
    and explicitly authorizes finalization:
 
    ```bash
-   dev artifact list --json
-   dev artifact finalize --intent '<id>' --allow-commit --json
+   dev agent artifact list --json
+   dev agent artifact finalize --intent '<id>' --allow-commit --json
    ```
 
    Optionally require `--revision HASH`. Dev first delegates canonical
@@ -151,7 +151,7 @@ and receipts bind every finding occurrence plus source/index/tool/policy identit
 For a blocked sanitation review, inspect without applying:
 
 ```bash
-dev artifact finalize --intent '<id>' --preview-review --json
+dev agent artifact finalize --intent '<id>' --preview-review --json
 ```
 
 The preview cannot combine with `--allow-commit`, `--review-file` or
@@ -182,10 +182,10 @@ checkout, and `unmanaged` leaves retention to the user. Sources are `specstory`
 # Create the ordinary archive repository separately; configure its Git identity.
 git init -b main /path/to/history
 # Explicit private raw preservation; choose check or redact when wanted.
-dev artifact setup --mode archive --source specstory --archive /path/to/history \
+dev agent artifact setup --mode archive --source specstory --archive /path/to/history \
   --protection off --json
-dev artifact setup --apply --plan <id> --yes
-dev artifact status
+dev agent artifact setup --apply --plan <id> --yes
+dev agent artifact status
 # The same planner through repository setup:
 dev repo setup --artifacts --mode unmanaged --json
 ```
@@ -209,12 +209,12 @@ cloud settings and native session stores remain under SpecStory's control.
 ## Preserve copies, then find them
 
 ```bash
-dev artifact archive --session codex:<uuid> --json
+dev agent artifact archive --session codex:<uuid> --json
 # Inspect the private review directory, then after the recorder exits:
-dev artifact archive --apply --plan <id> --yes --writer-stopped
-dev artifact find --session codex:<uuid>
-dev artifact find --commit <full-source-commit-id>
-dev artifact find 'literal search text' --all
+dev agent artifact archive --apply --plan <id> --yes --writer-stopped
+dev agent artifact find --session codex:<uuid>
+dev agent artifact find --commit <full-source-commit-id>
+dev agent artifact find 'literal search text' --all
 ```
 
 For `--source files`, select exact configured paths with repeated `--file`.
@@ -236,7 +236,7 @@ responsibility.
 `off` saves raw input without a scanner. `check` uses enabled source-repository
 hygiene policy. `redact` proposes replacements on the copy and checks the result
 again. Disabled categories remain disabled; skipped is not clean. Blocking
-reports contain safe finding IDs for the existing `dev hygiene rules allow`
+reports contain safe finding IDs for the existing `dev git hygiene rules allow`
 workflow. Exact fixture exceptions need review and a reason. Snapshot scans
 support inline gitleaks rules and useDefault, not external rule-file includes.
 
@@ -246,7 +246,7 @@ Partial scans never pass. Review original/copy payloads privately; raw recovery,
 reports and receipts stay under `paths.state_dir`, outside Git and cache clearing.
 Filenames and metadata can still identify people or systems: review before sharing.
 
-After committing product/policy changes, `dev prepare` also supports an archive
+After committing product/policy changes, `dev agent artifact prepare` also supports an archive
 policy. Off/check finalization creates the exact archive copy after writer exit.
 For redact, preview and review `artifact archive` first, then pass its ID to
 `artifact finalize --archive-plan <id> --writer-stopped`. Reviewed plans should
@@ -275,18 +275,18 @@ discarded records still bind the reviewed plan's authority.
 ## Explicit Git synchronization and original backups
 
 ```bash
-dev artifact sync --push --json       # preview contacts the configured remote
-dev artifact sync --apply --plan <id> --yes
-dev artifact sync --pull --json       # separate pull preview; fast-forward only
+dev agent artifact sync --push --json       # preview contacts the configured remote
+dev agent artifact sync --apply --plan <id> --yes
+dev agent artifact sync --pull --json       # separate pull preview; fast-forward only
 
-dev artifact migrate --mode untrack --path .specstory/history --json
-dev artifact migrate --apply --plan <id> --yes --writer-stopped
+dev agent artifact migrate --mode untrack --path .specstory/history --json
+dev agent artifact migrate --apply --plan <id> --yes --writer-stopped
 
-dev artifact migrate --mode split --path .specstory/history --json
-dev artifact migrate --apply --plan <id> --yes
+dev agent artifact migrate --mode split --path .specstory/history --json
+dev agent artifact migrate --apply --plan <id> --yes
 # Optional: publish the original named refs to a separate empty destination.
-dev artifact backup <completed-migration-id> --remote <git-url> --json
-dev artifact backup --apply --plan <backup-plan-id> --yes
+dev agent artifact backup <completed-migration-id> --remote <git-url> --json
+dev agent artifact backup --apply --plan <backup-plan-id> --yes
 ```
 
 Untrack saves original refs and selected working files, edits ignore rules and
@@ -362,6 +362,6 @@ From v0.2.41, release source archives and Go module ZIPs both omit the existing
 SpecStory and agent-plan evidence directories. Git archives use `export-ignore`;
 Go uses nested `go.mod` boundary markers in those evidence-only roots. Preserve
 all embedded help, skills, rules and generated build inputs. Verify both real
-payloads with `python3 scripts/check-distribution.py --version v0.2.41` after
+payloads with `python3 scripts/check-distribution.py --version v0.3.1` after
 committing the packaging changes. This does not untrack evidence or shrink Git
 clones, and older immutable tags retain their original package contents.

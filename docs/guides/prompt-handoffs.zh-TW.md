@@ -12,7 +12,7 @@ lang: zh-TW
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-`dev prompt` 收集 read-only snapshot，放進 built-in prompt，再印出或交給你
+`dev agent prompt` 收集 read-only snapshot，放進 built-in prompt，再印出或交給你
 設定的 local command。它是 context handoff，不是 agent loop、scheduler、
 permission manager 或 lifecycle engine。
 
@@ -24,13 +24,13 @@ permission manager 或 lifecycle engine。
 ## 只升級到需要的層級
 
 ```text
-dev status / dev sweep / dev repo context
+dev status / dev work sweep / dev repo context
     |
     +-- facts 已足夠 --> 使用 done、park、sweep 或 retire
     |
-    +-- dev prompt render <recipe> --> 檢查或複製 exact prompt
-    +-- dev prompt run <recipe>    --> bounded one-shot analysis，沒有 user stdin
-    +-- dev prompt open <recipe>   --> 在目前 terminal 進行 foreground conversation
+    +-- dev agent prompt render <recipe> --> 檢查或複製 exact prompt
+    +-- dev agent prompt run <recipe>    --> bounded one-shot analysis，沒有 user stdin
+    +-- dev agent prompt open <recipe>   --> 在目前 terminal 進行 foreground conversation
 ```
 
 若下一步已清楚，優先使用 deterministic lifecycle command。只需要 context
@@ -43,13 +43,13 @@ parse reply、不會再跑下一輪，也不會把回答轉換為 mutation appro
 ## 三個 recipe
 
 ```bash
-dev prompt list
-dev prompt list --json
-dev prompt agents
-dev prompt agents --json
-dev prompt render pr-triage
-dev prompt render session-close
-dev prompt render workspace-closeout [repo-or-checkout]
+dev agent prompt list
+dev agent prompt list --json
+dev agent prompt agents
+dev agent prompt agents --json
+dev agent prompt render pr-triage
+dev agent prompt render session-close
+dev agent prompt render workspace-closeout [repo-or-checkout]
 ```
 
 | Recipe | Scope | Read-only result |
@@ -66,7 +66,7 @@ gap／warning，絕不變成看似安心的 clean/empty value。
 
 ### 安全地發現 configured profiles
 
-`dev prompt agents` 印出 sorted `PROFILE DEFAULT RUN OPEN DESCRIPTION` table。
+`dev agent prompt agents` 印出 sorted `PROFILE DEFAULT RUN OPEN DESCRIPTION` table。
 Direct launcher 只顯示 `filepath.Base(command[0])`，shell launcher 顯示 `shell`，
 unavailable mode 顯示 `—`。Stable `--json` form 是相同 profile 順序的 array；每個
 object 都有 `name`、`description`、`default`，以及 nested `run`／`open` object，
@@ -88,18 +88,18 @@ environment、rendered prompt 或 config path。Empty configuration 的 human ou
 範例：
 
 ```bash
-dev prompt render pr-triage --role reviewer --repo owner/api
-dev prompt run session-close --agent my-agent
-dev prompt run pr-triage --dry-run
-dev prompt open workspace-closeout . --agent my-agent
-dev prompt open workspace-closeout . --dry-run
+dev agent prompt render pr-triage --role reviewer --repo owner/api
+dev agent prompt run session-close --agent my-agent
+dev agent prompt run pr-triage --dry-run
+dev agent prompt open workspace-closeout . --agent my-agent
+dev agent prompt open workspace-closeout . --dry-run
 ```
 
 `run` 與 `open` 會先解析 globally selected profile 及其 requested launcher，之後才
 收集 recipe。Non-dry `open` 也會在同一個 early boundary 先檢查 interactive terminal。
 Missing、unknown 或 ambiguous profile、unavailable mode 與 missing TTY 因此會在不查詢
 forge 或 runtime 的情況下失敗。Diagnostic 會列出 sorted mode-capable profiles，並指向
-`dev prompt agents`。
+`dev agent prompt agents`。
 
 `--dry-run` 接著解析 working directory、transport、timeout 與 safe command preview，
 再印出完整 rendered prompt，但不啟動 process，因此不建立 writer claim。真正的 `run`
@@ -114,7 +114,7 @@ invoking agent 的 pane **不會**被排除。只有在協調好 disjoint owners
 
 ## Host-only agent configuration
 
-沒有 built-in agent、vendor 或 default launcher。在 `dev config path` 回傳的 user
+沒有 built-in agent、vendor 或 default launcher。在 `dev self config path` 回傳的 user
 config 中設定一個或多個 local command：
 
 ```toml
@@ -144,12 +144,12 @@ description = "OpenCode batch and interactive handoff"
 default = true
 
 [agent.run]
-command = ["opencode", "run", "--file", "{{prompt_file}}", "Read the attached dev prompt and follow its instructions."]
+command = ["opencode", "run", "--file", "{{prompt_file}}", "Read the attached dev agent prompt and follow its instructions."]
 input = "file"
 timeout = "10m"
 
 [agent.open]
-command = ["opencode", "run", "--interactive", "--file", "{{prompt_file}}", "Read the attached dev prompt, explain the evidence, and ask before changing anything."]
+command = ["opencode", "run", "--interactive", "--file", "{{prompt_file}}", "Read the attached dev agent prompt, explain the evidence, and ask before changing anything."]
 input = "file"
 ```
 
@@ -197,22 +197,22 @@ Placeholder 必須是完整 command element；`--prompt={{prompt}}` 這類 embed
 ## Permission 與 mutation boundary
 
 Built-in recipe 要求接收端分析並 quote 可能的 next command，不要 approve、merge、
-rebase、close、delete 或 retire。但 `dev prompt` 不是 sandbox：configured child 保留
+rebase、close、delete 或 retire。但 `dev agent prompt` 不是 sandbox：configured child 保留
 其 command 原本給予的 filesystem、network、tool 與 approval policy。`dev` 不會增加
 permissive mode、不會降低 permission、不會代答 approval prompt，也不會修改 config。
 
-任何 agent answer 都不是 authority。Review 後由 operator 自己呼叫 `dev done`、
-`dev park`、`dev sweep` 或 `dev retire`；這些 command 會在 mutation boundary 重新收集
+任何 agent answer 都不是 authority。Review 後由 operator 自己呼叫 `dev work done`、
+`dev work park`、`dev work sweep` 或 `dev work retire`；這些 command 會在 mutation boundary 重新收集
 並驗證 fresh state。
 
 ## Current-terminal 與 Herdr boundary
 
-`dev prompt open` **不會**建立、focus、reuse 或 inject Herdr、tmux 或 Zellij
+`dev agent prompt open` **不會**建立、focus、reuse 或 inject Herdr、tmux 或 Zellij
 surface。它在呼叫它的 terminal foreground 啟動 configured process。在 Herdr 裡，
 自然就是留在目前 pane。若想用另一個 Herdr pane，請手動建立或 focus 該 pane、在其中
-進入 exact checkout，再從該 terminal 執行 `dev prompt open ...`。
+進入 exact checkout，再從該 terminal 執行 `dev agent prompt open ...`。
 
-這與 `dev start --run '<shell command>'` 分開。後者只可將 shell text dispatch 到
+這與 `dev work start --run '<shell command>'` 分開。後者只可將 shell text dispatch 到
 本次新建 first-class Herdr worktree 回傳的 exact root pane；reused、fallback、
 unverified 與 non-Herdr surface 都 fail closed。`prompt open` 不會擴大或 reuse 這份
 exact-pane contract。
@@ -228,7 +228,7 @@ mixed-purpose、active、unrecognized 與 observation 不足的 session 都不�
 kind、worktree registration/path、status availability、cleanliness、in-progress Git
 operation、known base/branch containment、task state、artifact reachability/finalization
 與 runtime eligibility。只有 deterministic `retirement.status` 為 `eligible` 才能被建議
-retire；即使如此也不是 authorization：`dev retire` 必須在 mutation 前重新收集並驗證。
+retire；即使如此也不是 authorization：`dev work retire` 必須在 mutation 前重新收集並驗證。
 Merged pull request 只是 evidence，不能替代任何 gate。
 
 ## Rebase conflict
@@ -236,7 +236,7 @@ Merged pull request 只是 evidence，不能替代任何 gate。
 先使用 deterministic transaction，不要先找 agent：
 
 ```bash
-dev done <task> --ff
+dev work done <task> --ff
 # 或更新目前 branch
 dev git pull-rebase
 ```
@@ -244,7 +244,7 @@ dev git pull-rebase
 若 Git 停在 conflict，留在該 exact checkout，從那裡開啟完整 workspace context：
 
 ```bash
-dev prompt open workspace-closeout . --agent my-agent
+dev agent prompt open workspace-closeout . --agent my-agent
 ```
 
 用對話決定 semantic resolution。只有 operator 選擇後才 continue 或 abort Git rebase，
