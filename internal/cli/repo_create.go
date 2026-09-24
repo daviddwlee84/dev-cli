@@ -43,6 +43,7 @@ type repoBootstrapFlags struct {
 	yes            bool
 	json           bool
 	open           bool
+	fork           bool
 	checkIn        string
 	template       string
 	templateRef    string
@@ -76,6 +77,10 @@ type repoWorkflowRequest struct {
 	CommitMessage string
 	DryRun        bool
 	JSON          bool
+	Fork          bool
+	ForkYes       bool
+	ForkPlan      *repo.ForkPlan
+	ForkResult    *repo.ForkResult
 }
 
 type repoWorkflowResult struct {
@@ -97,6 +102,7 @@ type repoWorkflowResult struct {
 	Remote              *repoPublishResult        `json:"remote,omitempty"`
 	Handoff             repoHandoff               `json:"handoff"`
 	Warnings            []string                  `json:"warnings,omitempty"`
+	Fork                *repo.ForkResult          `json:"fork,omitempty"`
 }
 
 func newRepoNewCmd(app *App) *cobra.Command {
@@ -180,9 +186,20 @@ func newRepoCloneCmd(app *App) *cobra.Command {
 reference opens a cache-backed repository picker, retains manual source entry,
 and offers an idempotent scaffold after the clone. Opening the picker never
 refreshes forge providers. Setup is never selected by default for an existing
-team or third-party repo.`,
+team or third-party repo.
+
+Use --fork to create or reuse your personal GitHub fork, clone the original
+source, and configure origin (your fork) and upstream (the original).
+Existing branch pull targets are preserved; default pushes go to origin.
+Non-interactive fork creation requires --yes. --dry-run only reads state.`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+			defer func() {
+				if errors.Is(runErr, errRepoForkCanceled) {
+					fmt.Fprintln(app.Out, "Canceled; nothing was cloned.")
+					runErr = nil
+				}
+			}()
 			if len(args) == 0 {
 				if flags.json || !app.interactive() {
 					return errors.New("clone reference is required outside an interactive terminal")
@@ -217,6 +234,7 @@ team or third-party repo.`,
 				if ok {
 					setupRequest.Kind = repo.AcquireClone
 					setupRequest.Ref = request.Ref
+					setupRequest.ForkResult = request.ForkResult
 					if err := executeRepoSetup(app, setupRequest); err != nil {
 						return fmt.Errorf("clone is ready at %s but setup failed: %w", config.Contract(request.Destination), err)
 					}
@@ -232,6 +250,7 @@ team or third-party repo.`,
 		},
 	}
 	bindRepoBootstrapFlags(cmd, &flags, true, false, false)
+	cmd.Flags().BoolVar(&flags.fork, "fork", false, "create/reuse a personal GitHub fork and configure origin/upstream")
 	cmd.Flags().BoolVarP(&flags.open, "open", "o", false, "open the clone in the runtime afterwards (alias for --handoff=open)")
 	registerFlagCompletion(cmd, "handoff", fixedCompletions(repoHandoffCompletions()...))
 	registerFlagCompletion(cmd, "check-in", fixedCompletions(repoCheckInCompletions()...))
@@ -437,6 +456,10 @@ func buildCloneRepoRequest(app *App, ref string, flags repoBootstrapFlags) (repo
 		Submodules: flags.submodules,
 		Handoff:    handoff, BrowseSkills: flags.browseSkills, CheckIn: checkIn,
 		CommitMessage: flags.message, DryRun: flags.dryRun, JSON: flags.json,
+		Fork: flags.fork, ForkYes: flags.yes,
+	}
+	if flags.fork && !flags.dryRun && !flags.yes && (flags.json || !app.interactive()) {
+		return request, errors.New("non-interactive fork requires --yes; use --dry-run to inspect the plan")
 	}
 	if flags.preset == "" && cloneSetupOptionsSelected(flags) {
 		return request, errors.New("clone setup options require --preset")
@@ -587,6 +610,9 @@ func isRepoLocalExecutable(root, executable string) bool {
 
 func executeRepoWorkflow(app *App, request repoWorkflowRequest) error {
 	if request.Kind == repo.AcquireClone && request.DryRun {
+		if request.Fork {
+			return executeRepoCloneAcquire(app, &request)
+		}
 		return renderCloneDryRun(app, request)
 	}
 	if request.Kind == repo.AcquireNew && request.DryRun {
@@ -643,6 +669,9 @@ func executeRepoCloneAcquire(app *App, request *repoWorkflowRequest) error {
 	if err := (config.Submodules{Init: request.Submodules}).Validate(); err != nil {
 		return err
 	}
+	if request.Fork {
+		return acquireRepoFork(app, request)
+	}
 	if request.DryRun {
 		return renderCloneDryRun(app, *request)
 	}
@@ -661,6 +690,7 @@ func executeRepoCloneAcquire(app *App, request *repoWorkflowRequest) error {
 func finishRepoClone(app *App, request repoWorkflowRequest) error {
 	result := repoWorkflowResult{
 		Operation: "clone", Path: request.Destination, Created: true, Cloned: true, Handoff: request.Handoff,
+		Fork: request.ForkResult,
 	}
 	return finishRepoWorkflow(app, request, result)
 }
@@ -692,6 +722,7 @@ func executeRepoSetup(app *App, request repoWorkflowRequest) error {
 		Operation: operation, Path: request.Destination, Preset: request.Prepared.Plan.Preset,
 		Components: request.Prepared.Plan.Components,
 		Created:    created, Cloned: cloned, Handoff: request.Handoff,
+		Fork: request.ForkResult,
 	}
 	if err := executeScaffoldPipeline(app, request, &result); err != nil {
 		return err
@@ -858,6 +889,9 @@ func finishRepoWorkflow(app *App, request repoWorkflowRequest, result repoWorkfl
 		verb = "set up"
 	}
 	fmt.Fprintf(app.Out, "%s %s\n", verb, config.Contract(result.Path))
+	if result.Fork != nil {
+		renderForkPlan(app, result.Fork.Plan)
+	}
 	if result.Preset != "" {
 		fmt.Fprintf(app.Out, "  preset  %s\n", result.Preset)
 	}
@@ -973,13 +1007,17 @@ func renderRepoTemplateFilePreview(app *App, snapshot *repotemplate.Snapshot) {
 
 func renderCloneDryRun(app *App, request repoWorkflowRequest) error {
 	if request.JSON {
-		return json.NewEncoder(app.Out).Encode(map[string]any{
+		result := map[string]any{
 			"operation": "clone", "dry_run": true, "source": repo.RedactCloneRef(request.Ref),
 			"path": request.Destination, "preset": request.Scaffold.Preset,
 			"components": request.Scaffold.Components,
 			"check_in":   request.CheckIn, "commit": request.CheckIn == repoCheckInCommit,
 			"stage": request.CheckIn == repoCheckInStage, "publish": nil, "handoff": request.Handoff,
-		})
+		}
+		if request.ForkPlan != nil {
+			result["fork"] = request.ForkPlan
+		}
+		return json.NewEncoder(app.Out).Encode(result)
 	}
 	fmt.Fprintln(app.Out, app.outStyle().title("Dry run — nothing will be cloned"))
 	fmt.Fprintf(app.Out, "  source      %s\n", repo.RedactCloneRef(request.Ref))
@@ -991,7 +1029,11 @@ func renderCloneDryRun(app *App, request repoWorkflowRequest) error {
 		fmt.Fprintf(app.Out, "  components  %s (resolved after clone)\n", strings.Join(request.Scaffold.Components, ", "))
 	}
 	fmt.Fprintf(app.Out, "  check-in    %s\n", request.CheckIn)
-	fmt.Fprintln(app.Out, "  upstream    existing clone remote")
+	if request.ForkPlan != nil {
+		renderForkPlan(app, *request.ForkPlan)
+	} else {
+		fmt.Fprintln(app.Out, "  upstream    existing clone remote")
+	}
 	fmt.Fprintf(app.Out, "  handoff     %s\n", request.Handoff)
 	return nil
 }

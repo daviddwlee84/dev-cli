@@ -29,7 +29,7 @@ completion 保持相容。`dev help --tree` 預設展開兩層，`--depth 0` 展
 | 目標 | Commands |
 |---|---|
 | 追蹤工作 | `work list/start/park/resume/done/adopt/retire/sweep` |
-| Repository／Remote | `repo list/context/new/clone/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| Repository／Remote | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | 實驗 | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git 與 checkout 支援 | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | Coding agent 支援 | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -259,18 +259,34 @@ plain repository name 與清楚的 clone reference：
 | `dev repo new` | interactive wizard；第一個欄位可輸入新 name 或 clone reference |
 | `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；若輸入清楚的 Git URL、local Git path 或 owner/name，則改走 clone 並保留 history/remote |
 | `dev repo clone [owner/name\|url]` | clone 至 configured destination，再選擇是否套 preset；setup 預設關閉 |
+| `dev repo clone OWNER/REPO --fork` | 建立或重用個人 GitHub fork、clone 目前 source，並設定 fork/source remotes |
+| `dev repo fork [repo-or-path]` | 將既有 checkout 連至已驗證的個人 GitHub fork；預設目前 repository |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers 與 preset files 至既有 clean checkout；預設目前 repository，沒有明確要求時不 commit |
 
 改走 clone 的 `new` 會保留 source `origin`，因此拒絕 new-upstream creation flags；也會
 拒絕 `--template*`，因為後者的明確語意是「把 content 複製進 fresh history」。
 
-這些 commands 的 controls 包含 `--preset`、可重複的 `--component`、`--path`、用 `--set` 傳入 typed input、用
+`new`、`clone` 與 `setup` 的 controls 包含 `--preset`、可重複的 `--component`、`--path`、用 `--set` 傳入 typed input、用
 `--enable`/`--disable` 選擇 item、`--check-in <auto|commit|stage|none>`、
 `--dry-run`、`--yes`、`--json`，以及 `--handoff <stay|cd|open|start>`。
 `repo new` 另支援 `--template`、`--template-ref`、`--template-subdir`。JSON mode
 不互動，也不會改變 directory 或開啟 runtime。Dry-run 不會修改 target repository；
 clone setup 必須等 clone 存在後才能產生詳細 plan。每個 command 實際支援的精確 flags
 請看下方 generated reference。
+
+Fork commands 需要已登入的 `gh`，目標限於該使用者的個人 GitHub account。重用既有
+fork 前會驗證它與 source 的關係。Fork acquisition 會 clone 目前 source，因此不會
+從可能過時的 fork head 開始。完成後 `origin` 指向 fork，`upstream` 指向 source。
+既有 checkout 優先從 `upstream`、其次 `origin` 辨識 source；可用
+`repo fork --source-remote NAME` 明確選擇。Native remote rename 會保留 branch
+pull target 的 repository identity。`remote.pushDefault` 設為 `origin`，原本指向
+source 的 branch `pushRemote` overrides 也會改指 fork；remote 衝突或指向無關目標的
+explicit push 設定會阻擋套用。
+
+兩種 fork 流程都支援 `--dry-run`、`--json` 與 `--yes`。Dry-run 會讀取 local 與
+GitHub state，但不修改；非互動修改需要 `--yes`。Fork 不會隱含執行 setup、push
+branch 或開 PR。部分完成時，會保留並回報已建立的 fork、checkout 與已完成的
+configuration steps；普通 clone 行為不變。
 
 Wizard 會在 target repository mutation 前顯示 selected scaffold 與 workflow
 summary。Built-in presets 為：

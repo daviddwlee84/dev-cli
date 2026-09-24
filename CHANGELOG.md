@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev repo clone OWNER/REPO --fork` creates or reuses a verified personal
+  GitHub fork while cloning the current source; `dev repo fork [repo-or-path]`
+  connects an existing checkout. Both configure `origin` as the fork and
+  `upstream` as the source, preserve branch pull targets, and direct default
+  pushes to the fork. Preview with `--dry-run`; neither command pushes or opens
+  a PR, and failures retain completed work.
+
 ## [0.3.1] - 2026-09-24
 
 ### Added

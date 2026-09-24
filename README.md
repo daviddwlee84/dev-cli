@@ -577,6 +577,8 @@ dev repo new owner/api                        # clear clone reference: preserve 
 dev repo new api --template owner/starters --template-subdir go/service
 dev repo new api --check-in stage -m "chore: initialize api"
 dev repo clone owner/api                      # owner/name or a Git URL
+dev repo clone owner/api --fork               # acquire a personal GitHub fork
+dev repo fork . --dry-run                     # preview fork remotes for an existing checkout
 dev repo setup . --preset agent-ready         # add the same setup to an existing repo
 ```
 
@@ -600,6 +602,18 @@ Clone can optionally apply a preset after the checkout exists, while `repo setup
 initializers and preset files into a repository you already have. Custom hooks
 and skill setup remain responsible for their own idempotency. Use `--dry-run`
 to inspect the available plan without mutating the target repository.
+
+For GitHub contributions, `repo clone OWNER/REPO --fork` creates or reuses a
+verified fork in the authenticated `gh` user's personal account, clones the
+current source, and configures `origin` as your fork and `upstream` as the source.
+`repo fork [repo-or-path]` applies the same remote layout to an existing checkout;
+source discovery prefers `upstream`, then `origin`, with `--source-remote NAME`
+for an explicit choice. Branch pull targets keep their repository identity,
+while default pushes and source-directed branch `pushRemote` overrides point to
+the fork. Conflicting remotes or unrelated explicit push targets stop the operation.
+Use `--dry-run --json` to inspect it and `--yes` for non-interactive application.
+Forking does not run setup implicitly, push branches, or open a PR; failures
+retain the fork, checkout, and any completed configuration steps.
 
 `repo new` can also start from a content snapshot rather than an empty tree.
 `--template` accepts a local directory/repository, Git URL, or owner/name;

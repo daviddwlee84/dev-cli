@@ -1651,6 +1651,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
 - `--enable` — enable a scaffold item by id (repeatable)
+- `--fork` — create/reuse a personal GitHub fork and configure origin/upstream
 - `--gitignore` — gitignore template (repeatable or comma-separated)
 - `--handoff` — afterwards: stay, cd, open or start
 - `--import-orphan-plans` — copy matching global Claude plans into the repository
@@ -1683,6 +1684,19 @@ Preview: inspect and run guarded repository lifecycle actions
 ```
 dev repo flow [repo]
 ```
+
+### `dev repo fork`
+
+Connect an existing checkout to your personal GitHub fork
+
+```
+dev repo fork [repo-or-path] [flags]
+```
+
+- `--dry-run` — inspect the fork and remote plan without changing anything
+- `--json` — emit a machine-readable plan or result
+- `--source-remote` — remote identifying the original GitHub repository
+- `-y, --yes` — apply the fork and remote plan without prompting
 
 ### `dev repo list`
 

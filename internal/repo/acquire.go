@@ -29,11 +29,14 @@ const (
 // deliberately owned by callers so the same acquisition path can serve the
 // interactive wizard and non-interactive commands.
 type AcquireRequest struct {
-	Submodules    string
-	Config        config.Config
-	Kind          AcquireKind
-	Name          string
-	CloneRef      string
+	Submodules string
+	Config     config.Config
+	Kind       AcquireKind
+	Name       string
+	CloneRef   string
+	// CloneRemote overrides Git's clone.defaultRemoteName when a lifecycle
+	// workflow requires a known initial remote. Empty keeps native defaults.
+	CloneRemote   string
 	Destination   string
 	InitialBranch string
 }
@@ -108,7 +111,12 @@ func Acquire(ctx context.Context, request AcquireRequest) (AcquireResult, error)
 	case AcquireClone:
 		cloneRef := NormalizeCloneRef(request.CloneRef)
 		result.CloneRef = RedactCloneRef(cloneRef)
-		if _, err := gitx.Run(ctx, filepath.Dir(destination), "clone", cloneRef, destination); err != nil {
+		cloneArgs := []string{"clone"}
+		if request.CloneRemote != "" {
+			cloneArgs = append(cloneArgs, "--origin", request.CloneRemote)
+		}
+		cloneArgs = append(cloneArgs, cloneRef, destination)
+		if _, err := gitx.Run(ctx, filepath.Dir(destination), cloneArgs...); err != nil {
 			return result, fmt.Errorf("clone repository: %w", RedactCloneError(err, cloneRef, request.CloneRef))
 		}
 		result.Created, result.Cloned, result.GitInited = true, true, true

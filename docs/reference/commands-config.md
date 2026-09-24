@@ -27,7 +27,7 @@ and add `--aliases` to reveal shortcuts. See the [v0.3 migration guide](cli-v0.3
 | Goal | Commands |
 |---|---|
 | tracked work | `work list/start/park/resume/done/adopt/retire/sweep` |
-| repositories/remotes | `repo list/context/new/clone/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| repositories/remotes | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | experiments | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git and checkout support | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | coding-agent support | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -278,13 +278,15 @@ reference:
 | `dev repo new` | interactive wizard; its first field accepts either a new name or a clone reference |
 | `dev repo new NAME` / `dev repo create NAME` | create a new local repository; a clear Git URL, local Git path, or owner/name instead routes to clone and preserves history/remote |
 | `dev repo clone [owner/name\|url]` | clone into the configured destination, then optionally apply a preset; setup defaults off |
+| `dev repo clone OWNER/REPO --fork` | create or reuse a personal GitHub fork, clone the current source, and configure fork/source remotes |
+| `dev repo fork [repo-or-path]` | connect an existing checkout to a verified personal GitHub fork; defaults to the current repository |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers and preset files into an existing clean checkout; defaults to the current repository and does not commit unless requested |
 
 A clone-routed `new` retains the source `origin`; it therefore rejects
 new-upstream creation flags. It also rejects `--template*`, whose explicit
 meaning is “copy content into a fresh history.”
 
-Across these commands, controls include `--preset`, repeatable `--component`, `--path`, typed input values through
+For `new`, `clone`, and `setup`, controls include `--preset`, repeatable `--component`, `--path`, typed input values through
 `--set`, item selection through `--enable`/`--disable`, `--check-in
 <auto|commit|stage|none>`, `--dry-run`, `--yes`, `--json`, and `--handoff
 <stay|cd|open|start>`. `repo new` additionally accepts `--template`,
@@ -293,6 +295,22 @@ never changes directory or opens a runtime. Dry-run performs no target
 repository mutation; clone setup can only be planned in detail after the clone
 exists. Use the generated reference below for each command's exact flag
 availability.
+
+The fork commands require authenticated `gh` and target its user's personal
+GitHub account. They verify an existing fork's relationship to the source before
+reusing it. Fork acquisition clones the current source, so an old fork does not
+determine the starting checkout. The resulting remotes are `origin` for the fork
+and `upstream` for the source. Existing-checkout source discovery prefers
+`upstream`, then `origin`; `repo fork --source-remote NAME` overrides that choice.
+Native remote rename preserves branch pull target identity. `remote.pushDefault`
+becomes `origin`, and source-directed branch `pushRemote` overrides are normalized
+to the fork; conflicting remotes and unrelated explicit push targets are rejected.
+
+Both fork paths accept `--dry-run`, `--json`, and `--yes`. Dry-run performs local
+and GitHub reads without changing either; non-interactive mutation requires
+`--yes`. Forking does not implicitly run setup, push branches, or open a PR.
+Partial results retain and report any created fork, checkout, and completed
+configuration steps. Ordinary clone behavior remains unchanged.
 
 The wizard renders the selected scaffold and workflow summary before target
 repository mutation. The built-in presets are:

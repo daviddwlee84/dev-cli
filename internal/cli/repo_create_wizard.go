@@ -266,7 +266,16 @@ func promptRepoCloneWizard(app *App, p *prompter, flags repoBootstrapFlags, ref 
 		fmt.Fprintf(p.out, "  setup        %t\n", setup)
 	}
 	fmt.Fprintf(p.out, "  handoff      %s\n", request.Handoff)
+	if request.Fork {
+		if err := planRepoForkClone(app, &request); err != nil {
+			return repoWorkflowRequest{}, false, false, err
+		}
+		renderForkPlan(app, *request.ForkPlan)
+	}
 	confirmed, err := p.confirm("Clone this repository?", true)
+	if request.Fork && confirmed && err == nil {
+		request.ForkYes = true
+	}
 	return request, setup, confirmed, err
 }
 
