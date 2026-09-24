@@ -43,8 +43,30 @@ func tuiFleetSnapshot(name string) fleet.Snapshot {
 }
 
 func TestTUIFleetDescriptorsAreIndependentAndCacheIgnoresTTL(t *testing.T) {
-	_, backend, hosts := tuiFleetFixture(t, "[defaults]\ncache_ttl = '1ns'\n[[hosts]]\nname = 'cached'\nssh_alias = 'one'\n[[hosts]]\nname = 'no-cache'\nssh_alias = 'two'\n")
+	_, backend, hosts := tuiFleetFixture(t, "[defaults]\ncache_ttl = '1m'\n[[hosts]]\nname = 'cached'\nssh_alias = 'one'\n[[hosts]]\nname = 'no-cache'\nssh_alias = 'two'\n")
 	if err := fleet.SaveCache(hosts[0], tuiFleetSnapshot("cached")); err != nil {
+		t.Fatal(err)
+	}
+	// Explicitly age the fixture; elapsed time below Windows clock resolution
+	// does not reliably expire a newly saved cache.
+	cachePath := filepath.Join(fleet.CacheRoot(), config.Slug(hosts[0].Name)+".json")
+	cacheData, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cacheFields map[string]json.RawMessage
+	if err := json.Unmarshal(cacheData, &cacheFields); err != nil {
+		t.Fatal(err)
+	}
+	cacheFields["fetched_at"], err = json.Marshal(time.Now().UTC().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheData, err = json.Marshal(cacheFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cachePath, cacheData, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	backend.run = func(context.Context, fleet.Host, []string, fleet.RunOptions) fleet.Result {
