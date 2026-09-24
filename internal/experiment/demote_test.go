@@ -148,6 +148,19 @@ func TestDemoteSelectionAndDryRunAreReadOnly(t *testing.T) {
 	if _, err := f.service.PlanDemote(t.Context(), experiment.DemoteRequest{Ref: graduated.Item.ID, Expected: stale}); err == nil {
 		t.Fatal("stale expected entry accepted")
 	}
+	plan, err := f.service.PlanDemote(t.Context(), experiment.DemoteRequest{Ref: graduated.Item.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, alternate := range []struct{ host, root string }{{"other-host", f.tries}, {"test-host", f.tries + "-other"}} {
+		service, err := experiment.NewService(experiment.ServiceConfig{Registry: f.registry, Store: f.store, Host: alternate.host, TriesRoot: alternate.root, ProjectRoot: f.projects, Hooks: demoteHooks()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.ApplyDemote(t.Context(), plan); err == nil || !strings.Contains(err.Error(), "different host") {
+			t.Fatalf("cross-context plan accepted: %v", err)
+		}
+	}
 }
 
 func TestDemoteRequiresSafeFreeDestination(t *testing.T) {

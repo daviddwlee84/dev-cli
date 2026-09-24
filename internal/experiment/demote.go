@@ -47,6 +47,8 @@ type DemotePlan struct {
 	GitCommonDir   string `json:"git_common_dir"`
 	LinkedWorktree bool   `json:"linked_worktree"`
 	DryRun         bool   `json:"dry_run"`
+	host           string
+	triesRoot      string
 	entry          *catalog.Entry
 	identity       string
 	gitIdentity    string
@@ -60,7 +62,7 @@ type DemotePlan struct {
 
 func (p DemotePlan) fingerprint() string {
 	return removalDigest([]any{p.ID, p.Source, p.Destination, p.GitCommonDir,
-		p.LinkedWorktree, p.DryRun, p.entry, p.identity, p.gitIdentity, p.gitDirIdentity, p.gitState,
+		p.LinkedWorktree, p.DryRun, p.host, p.triesRoot, p.entry, p.identity, p.gitIdentity, p.gitDirIdentity, p.gitState,
 		p.parentIdentity, p.tree, p.guard})
 }
 
@@ -126,6 +128,9 @@ func (s *Service) ApplyDemote(ctx context.Context, plan DemotePlan) (TransitionR
 	if plan.seal == "" || plan.fingerprint() != plan.seal {
 		return result, errors.New("invalid or modified demotion plan")
 	}
+	if plan.host != s.host || plan.triesRoot != s.triesRoot {
+		return result, errors.New("demotion plan belongs to a different host or tries_root")
+	}
 	if plan.DryRun {
 		return result, nil
 	}
@@ -158,7 +163,7 @@ func (s *Service) ApplyDemote(ctx context.Context, plan DemotePlan) (TransitionR
 
 func (s *Service) prepareDemote(ctx context.Context, entry *catalog.Entry, to string, dryRun bool) (DemotePlan, error) {
 	ctx = gitx.WithReadOnlyObservations(ctx)
-	plan := DemotePlan{DryRun: dryRun}
+	plan := DemotePlan{DryRun: dryRun, host: s.host, triesRoot: s.triesRoot}
 	if !graduatedEntry(entry) || entry.MoveIntent != nil || entry.RecoveryReceipt != nil {
 		return plan, errors.New("demotion requires a previously graduated Try without a pending operation")
 	}
