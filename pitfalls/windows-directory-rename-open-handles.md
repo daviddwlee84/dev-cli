@@ -38,5 +38,5 @@ go test ./internal/experiment -run '^TestDemote' -count=1
 `TestRelocatableLeaseMovesWithTreeAndStillExcludes` covers rename with continuous
 exclusion; adjacent tests cover cross-process contenders and substituted
 directories. Demote tests cover moves, stale authority, rollback and recovery.
-Native Windows verification of this fix is pending the next CI run; passing
-POSIX tests or cross-compilation is not evidence of a passing Windows run.
+Require the native Windows relocation gate and full-suite audit before release;
+passing POSIX tests or cross-compilation is not evidence of a passing Windows run.
