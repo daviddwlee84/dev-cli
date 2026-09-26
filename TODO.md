@@ -11,6 +11,13 @@ silently reinterpret a recorded fork-point OID as an integration branch. Extend
 its own explicit target/proof model and tests before reusing retirement's base
 resolver; preserve fresh remote evidence and stale-plan rejection.
 
+### P? · M — Remote sudo credentials for fleet and managed setup
+dev stores SSH login passwords but not remote sudo passwords, so unattended
+chezmoi apply / lazyclash system setup needs a temporary NOPASSWD drop-in or
+repeated terminal prompts. Evaluate a `dev ssh sudo` context reusing the
+keychain/Bitwarden providers with stdin/askpass delivery only.
+See [remote sudo credentials](backlog/remote-sudo-credentials.md).
+
 ### P? · M — Herdr navigation scoped to the calling client
 Evaluate a public Herdr API that identifies the invoking client and selects an
 exact machine/session/workspace without moving other clients. Fleet currently
