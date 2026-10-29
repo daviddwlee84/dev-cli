@@ -2,7 +2,7 @@
 description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
-verified_on: 2026-09-24
+verified_on: 2026-10-29
 lang: zh-TW
 ---
 
@@ -13,7 +13,18 @@ Submodule superproject 有多份獨立 Git history。Workspace 成員意圖把�
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-`dev` 把一個工作單位視為變更流 (change stream)，而它的持久身分是 Git branch。Checkout 與執行環境 (runtime) 都只是可替換的投影。
+`dev` 以 task 記錄一個變更流 (change stream)，其持久的 code identity 是 Git branch。Checkout 與執行環境 (runtime) 都是這個 stream 可替換的投影。
+
+**工作項目 (work item)** 描述預期成果與驗收條件。它可以跨越多個 change stream、
+機器與 agent session；同一個 stream 也可能為多個 work item 提供成果。
+Session 提供執行脈絡，session 結束不代表成果已獲驗收。這些關係不需要一對一對應。
+目前 `dev` task 記錄 checkout lifecycle intent，不保存結構化的 work-item 關聯，
+也不會恢復 agent 對話。
+
+Task tracking 是可選的。需要記錄 park/resume 與 retirement 時才選
+`dev work start`；repository 導覽與沒有 task 的 worktree cleanup 都可獨立使用。
+想法、agent 提案與已接受的工作保留在專案選定的 work-item 來源。
+提議的流程與評估條件見[人與 Agent 的工作項目](../notes/human-agent-work-items.md)研究筆記。
 
 ## 四種責任
 

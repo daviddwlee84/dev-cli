@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Bilingual research on human/agent work items, proposal triage and cross-devbox
+  handoffs compares Markdown, hosted trackers, td/Sidecar, Beads/Dolt and Herdr.
+  Task guidance distinguishes durable outcomes from change streams and agent
+  sessions, with staged trial criteria before adding dev integrations.
+
 ## [0.3.3] - 2026-09-25
 
 ### Added

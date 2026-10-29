@@ -763,6 +763,12 @@ Use [the isolated workflow trial](contrib/worktree-trial/README.md) to compare
 Herdr and Sidecar without changing existing tasks. Task tracking remains an
 optional supported workflow, not a prerequisite for durable Git work.
 
+A dev task records a branch-backed change stream. A work item may span several
+streams and agent sessions; recording an idea or issue needs none of them.
+Choose tasks for recorded park/resume and retirement, and keep work-item
+acceptance in the project's chosen source. See the research on
+[human and agent work items](docs/notes/human-agent-work-items.md).
+
 `dev repo list --json` also supplies local repository candidates to editors and
 launchers. The optional dotfiles `dev-projects` helper, `:DevRepositories`, and
 Television channel share this source without filling recent-project histories.
@@ -1520,9 +1526,10 @@ to improvise:
 | Harness-owned turn-scoped subagent isolation | **Claude Code** | `.claude/worktrees/` (gitignored) | owned by that harness; no history-relocation guarantee |
 | `herdr worktree create` | **not used** — `dev` runs `git worktree add`, then `herdr worktree open --path …` | — | — |
 
-**If code, history, or plans must remain reviewable—or you may return tomorrow—
-use `dev`.** Prefer `dev work start` with an explicit committed base for new managed
-work. If an external worktree already exists and only needs runtime visibility:
+Use `dev` for its configured worktree placement, provisioning, and guarded cleanup.
+Choose `dev work start` with an explicit committed base when recorded park/resume
+and retirement are useful; task-free creation remains available. If an external
+worktree already exists and only needs runtime visibility:
 
 ```bash
 # New managed work:

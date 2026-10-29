@@ -32,7 +32,8 @@ So the question is never "how many agents am I running?" It is:
 | Feature, fix, experiment, handoff | `dev` | `~/Worktrees/<repo>/<slug>` | until external retirement |
 | Harness-owned turn-scoped isolation | Claude Code | `.claude/worktrees/` | owned by that harness; no transcript-relocation guarantee |
 
-**Might you review or return to the code/history/plan later → `dev`.**
+Use `dev` for its configured placement, provisioning, and guarded cleanup.
+Choose task registration separately, when recorded park/resume and retirement help.
 
 Never put a long-lived worktree inside the repository. Every file watcher,
 language server, indexer and `rg` run in the outer repo then sees a second copy
@@ -50,7 +51,7 @@ dev git worktree rm feat/auth                   # remove the checkout; branch su
 dev git worktree provision                      # re-run setup on an existing checkout
 ```
 
-Prefer `dev work start` with an explicit base for new managed work. For an existing
+When choosing a managed task, use `dev work start` with an explicit base. For an existing
 external worktree that only needs runtime visibility, use
 `dev git worktree open <branch> --repo <repo> --runtime herdr --no-focus`. It reports the
 branch, actual path and backend/handle immediately, then the runtime surface

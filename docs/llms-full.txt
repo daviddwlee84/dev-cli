@@ -379,7 +379,22 @@ Source: https://daviddwlee84.github.io/dev-cli/concepts/mental-model/
 
 A submodule superproject has several independent Git histories. Workspace member intent links selected child branches to one outer task without adding lifecycle states. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/): initialization stays at gitlinks, Cold requires recovery, and Retire also requires child integration.
 
-`dev` treats a unit of work as a **change stream** whose durable identity is its Git branch. The checkout and runtime are replaceable projections of that stream.
+`dev` records a **change stream** as a task whose durable code identity is its Git branch. The checkout and runtime are replaceable projections of that stream.
+
+A **work item** describes an intended outcome and its acceptance criteria. It may
+span several change streams, machines, and agent sessions; one stream may also
+contribute to several work items. A session supplies execution context, and its
+ending does not establish that an outcome is accepted. These relationships do
+not require a one-to-one mapping. Current `dev` tasks record checkout lifecycle
+intent; they do not persist structured work-item associations or resume an agent
+conversation.
+
+Task tracking is optional. Choose `dev work start` when recorded park/resume and
+retirement are useful; repository navigation and task-free worktree cleanup
+remain available without a task. Keep ideas, agent proposals, and accepted work
+in the project's chosen work-item source. See the research note on
+[human and agent work items](https://daviddwlee84.github.io/dev-cli/notes/human-agent-work-items/) for the proposed
+workflow and evaluation criteria.
 
 ## Four responsibilities
 
@@ -1498,7 +1513,10 @@ A Git worktree begins as a clean checkout. `dev` owns durable change-stream work
 | harness-scoped isolation | Claude Code or another harness | harness-owned directory such as `.claude/worktrees/<name>/` | governed by that harness's retention and safe-cleanup rules; Flow never adopts or removes it |
 | externally created linked worktree | external until adopted | tool-specific | visible to `dev`/`dev repo flow`; unmanaged until explicit adoption |
 
-Use `dev` when code, history, or plans must remain reviewable or a human may return later. Do not nest a long-lived `dev` worktree inside a repository; file watchers, language servers, backup tools, and searches in the outer checkout would see a second copy of the tree.
+Use `dev` for its configured worktree placement, provisioning, and guarded cleanup.
+Task registration is a separate choice. Do not nest a long-lived `dev` worktree
+inside a repository; file watchers, language servers, backup tools, and searches
+in the outer checkout would see a second copy of the tree.
 
 `dev` creates the checkout with Git at its configured path. Herdr only opens that existing path, so worktree placement remains identical on machines without Herdr.
 
@@ -1513,7 +1531,11 @@ lifecycle mutation. See [Repository lifecycle flow](https://daviddwlee84.github.
 Task registration is optional. To create a checkout without a dev task, use
 `dev git worktree create feat/example --base main`; Git keeps the branch and
 checkout after its runtime closes. Opening it later does not require adoption.
-Choose `dev work start` when its recorded park/resume lifecycle is useful.
+Choose `dev work start` when its recorded park/resume and retirement lifecycle
+is useful. A task tracks a branch-backed change stream; an issue can span several
+streams and sessions. Creating a work item does not require creating a task,
+branch, worktree, or agent session. See
+[human and agent work items](https://daviddwlee84.github.io/dev-cli/notes/human-agent-work-items/) for that distinction.
 
 For task-free cleanup after integration, run from the canonical checkout and
 outside the target runtime:
@@ -1536,7 +1558,7 @@ navigation is independent too: `dev repo list --json` can supply editor and
 Sidecar candidates on demand. Keep native session/history/configuration state
 with each tool instead of synchronizing it as a second repository catalog.
 
-Prefer `dev work start` with an explicit committed base for new managed work:
+When choosing a managed task, use `dev work start` with an explicit committed base:
 
 ```bash
 dev work start api --task "auth fix" --branch fix/auth --base main
@@ -13700,6 +13722,7 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
+| human/agent work-item separation, tracker comparison and staged cross-devbox trial | [Human and agent work items](https://daviddwlee84.github.io/dev-cli/notes/human-agent-work-items/) | dated maintainer feedback, `internal/task`, `internal/fleet`, pinned upstream sources and agent-skills references listed in the note | source review 2026-10-29; installed-version compatibility and workflow trial not tested |
 | SSH profile tree, native discovery/setup, durable usage/tests and guided TUI recovery | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-connection-view), [problem guidance](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/) | `internal/tui`, `internal/sshactivity`, `internal/tuiissue`, native discovery/onboarding tests and isolated PTY smoke | v0.2.37 |
 | SSH key destinations, named agents/v2, FIDO and explicit vault creation | [SSH key providers](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/) | `internal/sshhost`, `internal/sshvault`, CLI/TUI regressions and isolated native-fixture smokes | v0.2.38; real vault/hardware operations not exercised |
 | Native Android/Termux SSH filesystem support | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-connection-view), [compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/) | `internal/platformfs`, native Android domain/TUI tests and actual config-only dashboard setup | v0.2.36; verified on ARM64 Android on 2026-09-13 |
@@ -13988,6 +14011,7 @@ When a note is added, list it here with type, status, verification date, and one
 |---|---|---|---|---|
 | [Authoring notes](https://daviddwlee84.github.io/dev-cli/notes/authoring/) | recipe | maintained | 2026-08-28 | page template, bilingual/source rules, and validation loop |
 | [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/notes/ai-pr-review-options/) | source-review | evolving | 2026-09-01 | which reviewer needs a workflow file, and the exact trigger phrase each expects |
+| [Human and agent work items](https://daviddwlee84.github.io/dev-cli/notes/human-agent-work-items/) | decision / source-review | evolving | 2026-10-29 | separate proposals, accepted outcomes and execution across repos/devboxes; evaluate workflow before adding a dev tracker integration |
 
 ## Rules
 
@@ -14232,6 +14256,306 @@ and at $15–25 per Claude Code Review it is not one to make on someone's behalf
 - [Pull request inbox](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/)
 - [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/)
 - [Sources and freshness](https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/)
+
+---
+
+### Human and agent work items
+
+Source: https://daviddwlee84.github.io/dev-cli/notes/human-agent-work-items/
+
+> Separate human intent, agent proposals, execution and sessions; compare work-item tools and plan a low-friction workflow across repositories and devboxes.
+
+Keep a small, understandable set of accepted outcomes in front of the human,
+while agents maintain the execution detail behind them. Persistent work items
+can support that arrangement; replacing the tracker alone cannot make an
+unattended backlog useful.
+
+!!! info "Research boundary"
+    This is a project recommendation informed by source review on **2026-10-29**.
+    Upstream revisions are listed below; they are not the versions tested on the
+    user's machines. The workflow trial has not run. This change adds guidance,
+    not a dev work-item backend, synchronization service or task deprecation.
+
+## What prompted the review
+
+The maintainer reported that dev tasks are rarely used and that experiments
+with td and Sidecar have not led to regularly reading their task views. Moving
+work into a database or an issue tracker therefore has not, by itself, improved
+participation. This is qualitative feedback, not a measured comparison or the
+result of the isolated worktree lifecycle trial.
+
+The target is one person collaborating with several agents, sometimes on
+different devboxes through Herdr remote. Capture should work with one short
+line. An item should remain referenceable across repositories and sessions,
+without requiring GitHub, Linear or even a repository at capture time.
+
+Existing project practices already solve part of this problem:
+
+- [project-knowledge-harness][pkh] separates deferred intent in TODO, research
+  and pitfalls in Markdown, and optional td execution records. Its inbox allows
+  unstructured capture. The bridge currently matches TODO and td by exact title;
+  that is a portability compromise, not a general identity scheme.
+- [forge-native-dev][forge-native] uses hosted issues for actionable work and
+  PRs for review. Its one-issue/one-PR/one-commit convention is useful for a
+  bounded patch, but cannot define every long-lived outcome. The agent-skills
+  repository [moved its own backlog to Issues and Discussions][skills-todo] on
+  2026-10-27; its TODO is now a pointer, not the active backlog.
+
+Both approaches need a clearer distinction between a recorded suggestion and
+a commitment. They also need a place the human actually revisits. Our proposed
+rule is **one authoritative home per fact**, with explicit references between
+layers; it does not require one tool for every layer. These are recommendations
+for evaluation, not changes to either skill's current contract.
+
+## Work items, change streams and sessions
+
+| Concept | What it records | Example |
+|---|---|---|
+| Capture | A thought worth keeping, with its original wording and source | “Look into slow login later” |
+| Proposal | A possible new outcome, not yet accepted | An agent suggests replacing the session cache |
+| Accepted work item | A desired outcome and a way to judge completion | Fix login timeouts under the reproduced condition |
+| Execution detail | Steps, evidence, dependencies and handoff context | Reproduce, test, implement, review |
+| dev task / change stream | Checkout mode, branch/base, lifecycle intent and next action | Continue the fix branch tomorrow |
+| Agent session | One conversation or execution context | Investigation on devbox A, implementation on B |
+| Project knowledge | Findings useful beyond this item | Why the old cache invalidation failed |
+
+```mermaid
+flowchart LR
+    accTitle: Human intent and agent execution
+    accDescr: Captures and proposals enter accepted work through human selection. Accepted work has execution detail that references optional change streams and sessions, and yields durable knowledge.
+    C["Short capture"] --> R["Triage and human selection"]
+    P["Agent proposals"] --> R
+    R --> W["Accepted work items"]
+    W --> E["Execution detail"]
+    E -. references .-> T["Optional dev change streams"]
+    E -. references .-> S["Agent sessions on different hosts"]
+    E --> K["Durable project knowledge"]
+```
+
+These are workflow concepts, not new persisted dev states. References need not
+be one-to-one: a work item may need several branches or PRs, and one change
+stream may address several related items. A session may touch several items;
+an item may outlive all its sessions. Research can finish without a branch,
+and task-free work remains legitimate.
+
+In the [current dev task model][dev-task], the ID is derived from repository
+and branch. `Owner` identifies a host, not a human assignee. `AgentSession` is
+reserved but not captured or attached by production start/park/resume;
+runtime handles are advisory. Retirement removes the task record. Those are
+poor foundations for a permanent issue identity, even though they serve
+checkout lifecycle management. See the [mental model](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/).
+
+## What the tools contribute
+
+The following is a capability comparison, not an adoption ranking.
+
+| Approach | Human participation and agent work | Across repositories and machines | Main tradeoff |
+|---|---|---|---|
+| Markdown inbox / TODO | Direct editing and agent-readable intent; long analysis can be linked | Git can carry committed text; global discovery and stable item references need a convention or index | Very low capture cost, but files do not create a review habit or concurrent work claims |
+| [GitHub Issues / Projects][github-projects] | Shared issues, discussion and configurable project views | Projects can collect items from multiple repositories; hosted issue identity is shared | Requires service access; creating issues freely can still overwhelm the human |
+| [Linear][linear-triage] | Triage precedes acceptance; [human assignment and agent delegation][linear-assignment] are distinct | Shared workspace supplies the coordination surface | Useful interaction model, but not a required dependency for a local dev tool |
+| [td][td] + [Sidecar Tasks][sidecar-tasks] | td retains logs, handoffs and review across sessions; Sidecar separates personal Inbox / Next / Agenda / Projects from TD, with explicit promotion | Personal planning spans repos; td has optional server sync, with local session identity | Another interface only helps when it is part of the daily loop; sync needs deliberate setup |
+| [Beads][beads] / [Dolt][dolt] | Persistent dependency graph and ready work; simple TODO capture and a focused human-intervention queue | Work can retain identity across sessions; Dolt supplies versioned data and remote synchronization | A graph helps agents find work, but does not decide which suggestions deserve human attention |
+| [Herdr UI][herdr-orchestrator] | Brings issue dispatch, runs and review into the working environment; Overview highlights agents needing attention | Orchestrator lists GitHub, GitLab and Beads sources across connected hosts' workspaces | It is a useful projection and execution surface, with discovery and freshness limits |
+
+Several version details matter when interpreting this table:
+
+- Current Beads uses **Dolt**, with an embedded single-writer mode and an
+  external server option for concurrent writers. JSONL is interchange, not the
+  authoritative store or a full database backup. Dolt's version history and
+  synchronization solve data concerns; human prioritization remains a workflow
+  concern. See [storage][beads] and [sync concepts][beads-sync].
+- [`bd todo`][beads-todo] creates ordinary issues in the same store. Its
+  [`human` commands][beads-human] offer a focused intervention queue; responding
+  closes that request, which should not be confused with accepting all related
+  product work. Sidecar's separate personal Tasks and explicit promotion to TD
+  demonstrate a different valid design.
+- td [sync is optional][td-sync], currently behind `sync_cli`. Do not infer
+  “local-only” from an older description, or universal independent-session
+  approval from an older review rule: current [review policy][td] includes
+  trusted, delegated and strict choices. Replication alone is not a global
+  claim or mutual-exclusion guarantee.
+- Herdr's observed Orchestrator scope is repositories represented by connected
+  workspaces, with up to 32 repositories listed. It retains prior results with
+  an error when a host is unreachable. This is not discovery of every dormant
+  repo on every machine. Its [Beads adapter][herdr-beads] reads `bd` JSON through
+  the main checkout, rather than an old JSONL file. The installed Herdr/Beads
+  pair, routing and read-side effects still need a real compatibility trial.
+
+## A collaboration loop with little ceremony
+
+This is the recommended trial policy. It can be represented by sections,
+labels or views; it does not prescribe a database schema.
+
+1. **Capture without classification.** Keep the person's original sentence and
+   return where it was saved. Repository, priority and effort may be unknown.
+   A chat acknowledgement is not persistence. For repository thoughts,
+   `dev repo note add "Investigate slow login" --repo api` already stores a
+   durable note, but notes have no built-in promotion or work-item queue.
+   A configured Markdown inbox can also be enough.
+2. **Separate proposals from accepted work.** Agents can group duplicates,
+   supply context and suggest an outcome. New directions go to proposals, with
+   their source and related item. They do not silently become commitments.
+   Let the human accept, combine, defer or reject a group in one interaction.
+3. **Expand accepted work autonomously.** Reproduction, implementation and tests
+   can be internal steps under the outcome. Do not interrupt the human for
+   each step. Promote a step to its own item when it needs independent ownership,
+   a separately accepted outcome or a durable cross-session dependency.
+4. **Present decisions before inventory.** Start the human view with questions
+   or reviews waiting on them, then accepted work in progress, then a small
+   selection of proposed next work. Each question includes context, options,
+   the consequence of waiting and a link to evidence. Show proposal totals and
+   allow expansion; hiding detail must not make it undiscoverable.
+5. **Close the loop.** Record the decision or completion evidence in the item's
+   authoritative home, then update its projections. Completion follows the
+   acceptance criteria and agreed authority, not merely an agent's “done”
+   signal. Harvest reusable findings into knowledge without copying the whole
+   activity log into the human backlog.
+
+For example, “Look into slow login” first stays in the inbox. After selection,
+it becomes an investigation with a decision to make. An agent on devbox A
+reproduces the timeout and proposes a bounded fix plus a larger cache redesign.
+The human accepts the fix as the next outcome, explicitly updates the same
+item's acceptance criteria, and defers the redesign. An agent on B implements
+and tests the fix; a later session reviews it. The item's identity and those
+agreed criteria stay the same across these sessions while execution references accumulate.
+Neither the deferred redesign nor every test becomes another top-level promise.
+
+Begin the trial with a short summary when starting work or receiving a handoff.
+A suggested attention budget is three to five decisions or outcomes at once,
+with the remaining count visible. This is an adjustable trial default, not a
+limit on stored work. A later scheduled digest can reuse the same view, grouping
+repeats and respecting deferral. Scheduling a digest is separate from authorizing
+agents to claim work, launch sessions or change repositories.
+
+## Identity and synchronization across devboxes
+
+A stable reference must include the source's scope as well as its item ID.
+For example, an issue number needs its forge/repository, and a local tracker ID
+needs its database/project namespace. Keep host, checkout and session references
+as execution context. Similar titles, remote paths or branch names are not
+evidence that two items are the same. A cross-repo outcome can reference several
+repository-specific changes without being duplicated into several master lists.
+
+One authoritative home does not require one central server. There are two
+distinct arrangements to evaluate:
+
+| Arrangement | What must be explicit |
+|---|---|
+| One store reached remotely | Which host/service owns it, how references resolve, and what remains available when it is offline |
+| Replicated stores | Shared project identity, sync transport, conflict handling, freshness, backup and the boundary of atomic claims |
+
+An offline snapshot must retain its source and last observation time. Unknown
+does not mean empty, complete or safe to claim. Offline capture may remain
+pending synchronization; concurrent acceptance-criteria edits and completion
+reports must not silently erase the human's decision. A tracker whose merge
+policy cannot preserve that distinction needs a restricted writer arrangement
+or another workflow before the trial can rely on it.
+
+dev does not synchronize notes or catalog files itself. Its current [fleet
+snapshot][dev-fleet] carries per-repository task counts, not a shared work-item
+or human decision queue. Remote navigation therefore does not establish shared
+backlog authority. Copying task TOML or runtime databases between machines is
+not a substitute for that design.
+
+## What should change in dev?
+
+**For now, clarify the boundary and test the workflow.** A permanent work-item
+store is conceptually close to Beads. dev's useful contribution remains
+repository discovery, checkout/runtime preparation and guarded lifecycle
+operations. That is a reason to examine integration, not to replace taskflow.
+
+The [existing worktree trial][dev-trial] remains separate. This research keeps
+task-free work available and managed tasks useful when park/resume and recorded
+next actions help. Issue closure cannot authorize cleanup; taskflow still
+revalidates Git, runtime, artifacts and ownership. Closing a session or safely
+retiring a checkout must not erase the work item's history.
+
+| Stage | Work to do | Evidence needed before the next stage |
+|---|---|---|
+| Document now | Agree vocabulary, proposal policy, source boundaries and scenarios | Human and agent can distinguish a suggestion, a commitment and an execution step |
+| Try existing surfaces | In two selected repos and two devboxes, try the native Herdr view or an existing inbox plus an explicit summary recipe | Capture is recoverable, decisions are actually revisited, and handoffs retain the same item identity |
+| Add the smallest missing capability | Evaluate a capture helper, explicit work-item references, or a bounded aggregation view according to the observed gap | The failure cannot be addressed adequately by the chosen tracker, its native UI or a small workflow adjustment |
+
+Before a real trial, record the installed versions, selected source of truth,
+read/sync side effects, host/repo coverage and how to retain/export the trial's
+work. Do not invoke trackers from ordinary dev refresh merely because their
+commands look like reads; reads may initialize, migrate or synchronize state.
+No installation, migration or scheduled job is part of this documentation change.
+
+If code is later warranted, preserve the tracker's identity rather than mirror
+its backlog into dev tasks. Any new Task TOML fields need a separate versioning
+and downgrade design: older binaries can erase unknown fields on rewrite.
+There is no new CLI, JSON contract, persistence schema or automatic completion
+synchronization in this proposal.
+
+## Trial scenarios and decision record
+
+These are acceptance scenarios, **not passing test results**. Record observations
+and the chosen next action alongside the existing trial research.
+
+| Scenario | Expected behavior to verify |
+|---|---|
+| One-line thought outside a repo | Saved durably without requiring a branch, priority or full issue form; the person can find it again |
+| Several agents produce many findings | Proposals remain separate; related findings are grouped and batch decisions are possible without reading every execution step |
+| Work within an accepted goal | Agents reproduce, implement and test without requesting approval for every internal step |
+| Research on A, implementation on B, later review | The same work item retains its criteria, evidence and resolvable execution references |
+| Two similarly named repositories or independent stores | Items are not merged by title, branch, path or unscoped ID |
+| Host unavailable or concurrent edits | Staleness/pending sync is visible; no false completion, lost decision or unsupported global claim |
+| Runtime changes or checkout retirement | The work item survives; cleanup follows its own fresh checks |
+| Returning to work after a gap | The human can identify what needs a decision and act without reconstructing every agent conversation |
+
+For each trial session, note capture friction, where the human actually read
+and answered, duplicate entry, missing context and manual reconciliation. Mark
+unvisited views and untested scenarios honestly. A tracker producing more items
+or agents completing more steps is not evidence of better human participation.
+
+## Sources and revision boundaries
+
+- dev-cli: source snapshot `531f2661307c366b23f9421ba369a5bc21b7d6f5`;
+  [task model][dev-task], [fleet projection][dev-fleet], [prior trial][dev-trial].
+- agent-skills: inspected local source snapshot
+  `7f295df170245f1d5512fc02c4f8dd90604e9472`; [PKH tracker rules][pkh],
+  [forge conventions][forge-native], [backlog migration][skills-todo].
+- td `359fd41c17729cff3e5c23ba5478b44cc162096f`: [README/review policy][td]
+  and [sync setup][td-sync].
+- Sidecar `2a2978a8a3e56f61d10f27edf4e17e4cc4a5d8b0`: [personal Tasks][sidecar-tasks].
+- Beads `e226083653b893998614df4225f73b6688ca9166`: [README/storage][beads];
+  living docs for [TODO][beads-todo], [human intervention][beads-human] and
+  [synchronization][beads-sync], reviewed on the date above.
+- Dolt `9138543aa63438ef1124731a92424366302c9641`: [versioned database overview][dolt].
+- Herdr UI `a5b2df2db54061cd2785c3ddf184bce348be3fd1`:
+  [Orchestrator][herdr-orchestrator] and [Beads CLI adapter][herdr-beads].
+- Living service documentation: [GitHub Projects][github-projects],
+  [Linear Triage][linear-triage] and [assignment/delegation][linear-assignment].
+
+## Related pages
+
+- [Mental model and lifecycle](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/)
+- [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/)
+- [Repository quick notes](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/)
+- [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/)
+- [Sources and freshness](https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/)
+
+[dev-task]: https://github.com/daviddwlee84/dev-cli/blob/531f2661307c366b23f9421ba369a5bc21b7d6f5/internal/task/task.go
+[dev-fleet]: https://github.com/daviddwlee84/dev-cli/blob/531f2661307c366b23f9421ba369a5bc21b7d6f5/internal/fleet/types.go
+[dev-trial]: https://github.com/daviddwlee84/dev-cli/blob/531f2661307c366b23f9421ba369a5bc21b7d6f5/backlog/project-navigation-and-task-trial.md
+[pkh]: https://github.com/daviddwlee84/agent-skills/blob/7f295df170245f1d5512fc02c4f8dd90604e9472/skills/local/project-knowledge-harness/references/integrating-trackers.md
+[forge-native]: https://github.com/daviddwlee84/agent-skills/blob/7f295df170245f1d5512fc02c4f8dd90604e9472/skills/local/forge-native-dev/SKILL.md
+[skills-todo]: https://github.com/daviddwlee84/agent-skills/blob/7f295df170245f1d5512fc02c4f8dd90604e9472/TODO.md
+[github-projects]: https://docs.github.com/en/issues/planning-and-tracking-with-projects/learning-about-projects/about-projects
+[linear-triage]: https://linear.app/docs/triage
+[linear-assignment]: https://linear.app/docs/assigning-issues
+[td]: https://github.com/marcus/td/blob/359fd41c17729cff3e5c23ba5478b44cc162096f/README.md
+[td-sync]: https://github.com/marcus/td/blob/359fd41c17729cff3e5c23ba5478b44cc162096f/docs/guides/sync-setup-guide.md
+[sidecar-tasks]: https://github.com/marcus/sidecar/blob/2a2978a8a3e56f61d10f27edf4e17e4cc4a5d8b0/website/docs/tasks.md
+[beads]: https://github.com/gastownhall/beads/blob/e226083653b893998614df4225f73b6688ca9166/README.md
+[beads-todo]: https://beads.gascity.com/workflows/todo
+[beads-human]: https://beads.gascity.com/cli-reference/human
+[beads-sync]: https://beads.gascity.com/core-concepts/sync-concepts
+[dolt]: https://github.com/dolthub/dolt/blob/9138543aa63438ef1124731a92424366302c9641/README.md
+[herdr-orchestrator]: https://github.com/penso/herdr-gpui/blob/a5b2df2db54061cd2785c3ddf184bce348be3fd1/crates/herdr-gpui/README.md#orchestrator
+[herdr-beads]: https://github.com/penso/herdr-gpui/blob/a5b2df2db54061cd2785c3ddf184bce348be3fd1/crates/herdr-orchestrator/src/beads.rs
 
 ---
 
@@ -14609,7 +14933,18 @@ Submodule superproject 有多份獨立 Git history。Workspace 成員意圖把�
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-`dev` 把一個工作單位視為變更流 (change stream)，而它的持久身分是 Git branch。Checkout 與執行環境 (runtime) 都只是可替換的投影。
+`dev` 以 task 記錄一個變更流 (change stream)，其持久的 code identity 是 Git branch。Checkout 與執行環境 (runtime) 都是這個 stream 可替換的投影。
+
+**工作項目 (work item)** 描述預期成果與驗收條件。它可以跨越多個 change stream、
+機器與 agent session；同一個 stream 也可能為多個 work item 提供成果。
+Session 提供執行脈絡，session 結束不代表成果已獲驗收。這些關係不需要一對一對應。
+目前 `dev` task 記錄 checkout lifecycle intent，不保存結構化的 work-item 關聯，
+也不會恢復 agent 對話。
+
+Task tracking 是可選的。需要記錄 park/resume 與 retirement 時才選
+`dev work start`；repository 導覽與沒有 task 的 worktree cleanup 都可獨立使用。
+想法、agent 提案與已接受的工作保留在專案選定的 work-item 來源。
+提議的流程與評估條件見[人與 Agent 的工作項目](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/human-agent-work-items/)研究筆記。
 
 ## 四種責任
 
@@ -15561,7 +15896,9 @@ Git worktree 一開始是乾淨 checkout。`dev` 擁有持久變更流 (change s
 | harness-scoped isolation | Claude Code 或其他 harness | harness-owned path，例如 `.claude/worktrees/<name>/` | 由該 harness 的 retention 與 safe-cleanup 規則管理；Flow 不會 Adopt/Remove |
 | 外部建立的 linked worktree | adoption 前由外部管理 | tool-specific | `dev`/`dev repo flow` 可看見；只有明確 Adopt 後才有 managed lifecycle |
 
-Code、history 或 plans 需要保持可 review，或人之後可能回來時，使用 `dev`。不要把長期 `dev` worktree 巢狀放在 repository 內；外層 checkout 的 file watcher、language server、backup tool 與搜尋會看到第二份 tree。
+需要設定的 worktree placement、provisioning 與受保護的 cleanup 時，使用 `dev`；
+是否登記 task 是另一個選擇。不要把長期 `dev` worktree 巢狀放在 repository 內；
+外層 checkout 的 file watcher、language server、backup tool 與搜尋會看到第二份 tree。
 
 `dev` 使用 Git 在設定路徑建立 checkout；Herdr 只開啟現有 path，因此沒有 Herdr 的機器仍維持相同 placement policy。
 
@@ -15571,8 +15908,10 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 
 Task 登記是可選的。`dev git worktree create feat/example --base main`
 可以建立沒有 dev task 的 checkout；關閉 runtime 後 Git branch 與 checkout
-仍然存在，之後開啟也不需要 Adopt。需要記錄 park/resume lifecycle 時才選
-`dev work start`。
+仍然存在，之後開啟也不需要 Adopt。需要記錄 park/resume 與 retirement lifecycle
+時才選 `dev work start`。Task 追蹤以 branch 為基礎的 change stream；一個 issue
+可以跨越多個 stream 與 session。建立工作項目不需要同時建立 task、branch、
+worktree 或 agent session。區別見[人與 Agent 的工作項目](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/human-agent-work-items/)。
 
 整合後要清理沒有 task 的 worktree，從 canonical checkout、目標 runtime 外執行：
 
@@ -15592,7 +15931,7 @@ checkout/runtime/artifact 檢查；squash merge 不一定符合 ancestry。
 `dev repo list --json` 可按需提供 editor 與 Sidecar 候選；session、history
 及設定由各工具管理，不同步成第二份 repository catalog。
 
-新的 managed 工作優先使用 `dev work start`，明確指定已 commit 的 base：
+選用 managed task 時，以 `dev work start` 明確指定已 commit 的 base：
 
 ```bash
 dev work start api --task "auth fix" --branch fix/auth --base main
@@ -26832,6 +27171,7 @@ tested_with: optional
 
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
+| 人與 agent 的工作項目分層、tracker 比較與分階段跨 devbox 試驗 | [人與 Agent 的工作項目](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/human-agent-work-items/) | 註明日期的維護者回饋、`internal/task`、`internal/fleet`，以及筆記列出的固定版本上游來源與 agent-skills references | 2026-10-29 來源查核；未實測安裝版本相容性與協作流程 |
 | SSH profile tree、原生 discovery/setup、durable 使用／測試紀錄與 TUI 問題引導 | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-connection-view)、[問題引導](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/) | `internal/tui`、`internal/sshactivity`、`internal/tuiissue`、native discovery/onboarding tests 與隔離 PTY smoke | v0.2.37 |
 | SSH key destination、named agent／v2、FIDO 與明確 vault creation | [SSH key providers](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/) | `internal/sshhost`、`internal/sshvault`、CLI／TUI 回歸與隔離 native-fixture smoke | v0.2.38；未執行真實 vault／hardware 操作 |
 | 原生 Android／Termux SSH 檔案系統支援 | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-connection-view)、[相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | `internal/platformfs`、原生 Android domain／TUI tests 與 dashboard config-only 實測 | v0.2.36；2026-09-13 於 ARM64 Android 驗證 |
@@ -27094,6 +27434,7 @@ draft → verified → maintained
 |---|---|---|---|---|
 | [撰寫筆記](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/authoring/) | recipe | maintained | 2026-08-28 | page template、雙語/source rules 與 validation loop |
 | [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/ai-pr-review-options/) | source-review | evolving | 2026-09-01 | 哪一種 reviewer 需要 workflow 檔案，以及各自期待的 trigger phrase |
+| [人與 Agent 的工作項目](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/human-agent-work-items/) | decision / source-review | evolving | 2026-10-29 | 分開跨 repo／devbox 的建議、已接受成果與執行細節；先驗證流程，再評估 dev tracker 整合 |
 
 ## 規則
 
@@ -27314,5 +27655,274 @@ gh pr comment 12 --repo owner/name --body '@coderabbitai full review'
 - [Pull request inbox](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/)
 - [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/)
 - [Sources and freshness](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/)
+
+---
+
+### 人與 agent 的工作項目
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/notes/human-agent-work-items/
+
+> 區分人類意圖、agent 提案、執行與 session；比較工作項目工具，規劃跨 repository 與 devbox 的低負擔工作流程。
+
+讓人面前維持少量、容易理解且已接受的工作成果，由 agent 維護背後的執行細節。
+可持久保存的工作項目（work item）能支援這種分工；但光是換一個追蹤工具，
+無法讓沒有人回看的待辦清單變得有用。
+
+!!! info "研究範圍"
+    本文是根據 **2026-10-29** 來源查閱提出的專案建議。
+    下方列出的上游 revision 並非已在使用者機器上測試的版本。
+    工作流程試用尚未進行。這次變更新增的是指引，沒有新增 dev 工作項目後端、
+    同步服務，也沒有棄用 task 功能。
+
+## 為什麼重新檢視
+
+維護者回饋，dev tasks 很少使用；在部分專案試用 td 與 Sidecar 後，
+也沒有養成定期查看其任務畫面的習慣。因此，光是把工作移到資料庫或 issue tracker，
+並未改善人的參與。這是使用感受的回饋，不是量化比較，也不是隔離環境中
+worktree 生命週期試用的結果。
+
+目標是一個人與多個 agent 協作，有時透過 Herdr remote 在不同 devbox 上工作。
+記錄想法應該只需要簡短一句話。工作項目應能跨 repository 與 session 持續被引用，
+而不必在記錄當下就依賴 GitHub、Linear，甚至不必先有 repository。
+
+現有專案慣例已解決部分問題：
+
+- [project-knowledge-harness][pkh] 把暫緩的意圖放在 TODO，研究與踩坑經驗放在 Markdown，
+  並可選用 td 保存執行記錄。它的 inbox 允許尚未整理的簡短記錄。
+  目前 bridge 以完全相同的標題對應 TODO 與 td；這是可攜性上的折衷，
+  不是通用的身分識別方案。
+- [forge-native-dev][forge-native] 用託管平台上的 issue 記錄可執行的工作，以 PR 進行審查。
+  一個 issue／一個 PR／一個 commit 的慣例適合範圍明確的修改，
+  卻無法定義所有長期目標。agent-skills repository 已於 2026-10-27
+  [把自身待辦移到 Issues 與 Discussions][skills-todo]；它的 TODO 現在只是入口，
+  不再是持續維護的待辦清單。
+
+兩種方式都需要更清楚地區分「記下的建議」與「承諾要做的事」，
+也都需要一個人實際會回看的地方。我們建議的規則是：**每項事實只有一個權威來源**，
+各層以明確引用連接；不要求所有層都使用同一工具。
+這些是待評估的建議，尚未改變兩個 skill 目前的契約。
+
+## 工作項目、change stream 與 session
+
+| 概念 | 記錄什麼 | 範例 |
+|---|---|---|
+| 隨手記錄 | 值得保留的想法，以及原始措辭與來源 | 「之後查一下登入為什麼很慢」 |
+| 提案 | 尚未接受的可能成果 | Agent 建議替換 session cache |
+| 已接受的工作項目 | 希望達成的成果，以及判斷完成的方法 | 修正在已重現條件下的登入逾時 |
+| 執行細節 | 步驟、證據、相依關係與交接脈絡 | 重現、測試、實作、審查 |
+| dev task / change stream | Checkout 模式、branch/base、生命週期意圖與下一步 | 明天繼續處理修正用的 branch |
+| Agent session | 一次對話或執行脈絡 | 在 devbox A 調查、在 B 實作 |
+| 專案知識 | 超越此工作項目仍有用的發現 | 舊的 cache 失效機制為何出錯 |
+
+```mermaid
+flowchart LR
+    accTitle: 人類意圖與 agent 執行
+    accDescr: 隨手記錄與提案經過人類選擇，成為已接受的工作。工作帶有執行細節，可引用選用的 change stream 與 session，並產生可持久保存的知識。
+    C["簡短記錄"] --> R["整理與人類選擇"]
+    P["Agent 提案"] --> R
+    R --> W["已接受的工作項目"]
+    W --> E["執行細節"]
+    E -. 引用 .-> T["選用的 dev change stream"]
+    E -. 引用 .-> S["不同主機上的 agent session"]
+    E --> K["可持久保存的專案知識"]
+```
+
+這些是工作流程概念，不是 dev 新增的持久化狀態。引用關係不必是一對一：
+一個工作項目可能需要數個 branch 或 PR；一個 change stream 也可能處理數個相關項目。
+一個 session 可以涉及多個項目；工作項目則可以比所有相關 session 存續更久。
+研究可以在沒有 branch 的情況下完成，不使用 task 的工作方式也依然成立。
+
+在[目前的 dev task 模型][dev-task]中，ID 由 repository 與 branch 衍生。
+`Owner` 表示主機，不是被指派的人。`AgentSession` 是保留欄位，
+正式的 start/park/resume 流程並未擷取或綁定它；runtime handle 也只是參考提示。
+Retirement 會移除 task 記錄。這些設計能支援 checkout 生命週期管理，
+卻不適合作為永久 issue 身分的基礎。另見[心智模型](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/)。
+
+## 各工具提供什麼
+
+以下比較能力，不是推薦採用的排名。
+
+| 方式 | 人類參與與 agent 工作 | 跨 repository 與機器 | 主要取捨 |
+|---|---|---|---|
+| Markdown inbox / TODO | 可直接編輯，agent 也能讀取意圖；長篇分析可另外連結 | Git 可攜帶已 commit 的文字；全域查找與穩定的項目引用需要慣例或索引 | 記錄成本很低，但檔案本身不會建立回看習慣，也不提供並行工作的認領機制 |
+| [GitHub Issues / Projects][github-projects] | 共用 issue、討論與可設定的專案視圖 | Projects 可彙集多個 repository 的項目；平台上的 issue 身分可共用 | 需要存取服務；任意新增 issue 仍可能淹沒人的注意力 |
+| [Linear][linear-triage] | 先整理再接受；[指派給人與委派給 agent][linear-assignment] 是不同動作 | 共用 workspace 提供協作介面 | 互動模型值得參考，但不必成為本地 dev 工具的必要依賴 |
+| [td][td] + [Sidecar Tasks][sidecar-tasks] | td 跨 session 保存記錄、交接與審查；Sidecar 把個人的 Inbox / Next / Agenda / Projects 與 TD 分開，透過明確操作提升為 TD 工作 | 個人規劃可跨 repository；td 可選用伺服器同步，session 身分仍在本地 | 多一個介面只有融入日常流程才有幫助；同步需要明確設定 |
+| [Beads][beads] / [Dolt][dolt] | 持久化相依圖與可開始的工作；簡單 TODO 記錄與集中的人類介入佇列 | 工作可以跨 session 保留身分；Dolt 提供資料版本與遠端同步 | 圖結構幫助 agent 找到工作，但不會決定哪些建議值得人注意 |
+| [Herdr UI][herdr-orchestrator] | 把 issue 分派、執行與審查帶進工作環境；Overview 凸顯需要注意的 agent | Orchestrator 列出已連線主機 workspace 中的 GitHub、GitLab 與 Beads 來源 | 適合呈現彙整資訊與執行工作，但有發現範圍與資料新鮮度的限制 |
+
+解讀上表時，有幾個版本細節需要留意：
+
+- 目前 Beads 使用 **Dolt**，提供嵌入式單一寫入者模式，以及支援並行寫入者的外部伺服器選項。
+  JSONL 用於資料交換，不是權威儲存來源，也不是完整的資料庫備份。
+  Dolt 的版本歷史與同步處理的是資料問題；人如何決定優先順序仍是工作流程問題。
+  參閱[儲存方式][beads]與[同步概念][beads-sync]。
+- [`bd todo`][beads-todo] 會在同一資料庫中建立一般 issue。
+  它的 [`human` 指令][beads-human] 提供集中的介入請求佇列；
+  回應會關閉該請求，不應把它理解成已接受所有相關產品工作。
+  Sidecar 把個人 Tasks 分開，並明確提升為 TD 工作，示範了另一種成立的設計。
+- td 的[同步是選用功能][td-sync]，目前由 `sync_cli` 開關控制。
+  不要根據舊說明推論它「只能在本地使用」，也不要從舊審查規則推論所有情況
+  都必須由獨立 session 核准：目前的[審查政策][td]包含 trusted、delegated 與 strict 選項。
+  資料複寫本身不保證全域認領或互斥。
+- 本次查閱的 Herdr Orchestrator 範圍是已連線 workspace 所代表的 repository，
+  最多列出 32 個 repository。主機無法連線時，它保留先前結果並顯示錯誤。
+  這不等於能找出每台機器上所有未使用中的 repository。
+  它的 [Beads adapter][herdr-beads] 透過主 checkout 讀取 `bd` JSON，而非舊的 JSONL 檔案。
+  實際安裝的 Herdr／Beads 組合、路由與讀取副作用仍需要真正的相容性試用。
+
+## 少一點儀式的協作循環
+
+以下是建議試用的政策。可以用章節、標籤或視圖表達，不限定資料庫 schema。
+
+1. **先記錄，不急著分類。** 保留人的原句，並回報儲存位置。
+   Repository、優先順序與預估工作量都可以暫時未知。對話中回一句「記下了」不等於持久保存。
+   對於 repository 相關想法，現有的
+   `dev repo note add "Investigate slow login" --repo api` 已能保存持久筆記，
+   但筆記沒有內建的提升流程或工作項目佇列。設定好的 Markdown inbox 也可能足夠。
+2. **把提案與已接受的工作分開。** Agent 可以合併重複內容、補充脈絡並建議成果。
+   新方向放進提案，附上來源與相關項目，不默默變成承諾。
+   讓人一次互動就能接受、合併、暫緩或拒絕一組提案。
+3. **自主展開已接受的工作。** 重現、實作與測試可以是成果之下的內部步驟，
+   不要為每一步打斷人。當步驟需要獨立負責人、另行接受的成果，
+   或跨 session 持續存在的相依關係時，再提升為獨立項目。
+4. **先呈現待決事項，再呈現完整清單。** 人的視圖先顯示等待回覆的問題或審查，
+   再顯示進行中的已接受工作，最後提供少量建議的下一步。
+   每個問題附上脈絡、選項、等待的影響與證據連結。
+   顯示提案總數並允許展開；收起細節不能讓它們變得找不到。
+5. **把結果寫回來源。** 在項目的權威來源記錄決定或完成證據，再更新其他呈現方式。
+   完成與否依據驗收條件及約定的決定權，而不只是 agent 的「done」訊號。
+   把可重用的發現整理成知識，不要把整份活動記錄複製到給人看的待辦清單。
+
+例如，「之後查一下登入為什麼很慢」先留在 inbox。被選中後，
+它成為一項需要作出決定的調查。Devbox A 上的 agent 重現逾時，
+提出一個範圍明確的修正，以及一個規模較大的 cache 重新設計方案。
+人接受修正作為下一個成果，明確更新同一項目的驗收條件，並暫緩重新設計。
+B 上的 agent 實作並測試修正，之後再由另一個 session 審查。
+執行引用持續累積，但項目的身分與這些已約定的條件在上述 session 之間維持不變。
+暫緩的重新設計方案與每項測試，都不會因此變成另一個最上層承諾。
+
+試用初期，在開始工作或收到交接時提供簡短摘要。
+建議一次呈現三到五個需要決定的事項或成果，並顯示其餘數量。
+這是可調整的試用預設，不限制儲存的工作數量。未來的定時摘要可以沿用同一視圖，
+合併重複項目並尊重暫緩決定。設定摘要排程，與授權 agent 認領工作、
+啟動 session 或變更 repository 是不同的事。
+
+## 跨 devbox 的身分與同步
+
+穩定的引用必須同時包含來源範圍與項目 ID。例如，issue 編號需要搭配其 forge／repository，
+本地追蹤工具的 ID 則需要資料庫／專案命名空間。主機、checkout 與 session 引用
+應保留為執行脈絡。相似標題、遠端路徑或 branch 名稱，不能證明兩個項目是同一件事。
+跨 repository 的成果可以引用數個 repository 各自的變更，
+而不必複製成數份總待辦清單中的主項目。
+
+單一權威來源不等於只能有一台中央伺服器。有兩種不同安排值得評估：
+
+| 安排 | 必須明確定義什麼 |
+|---|---|
+| 遠端存取同一資料庫 | 哪台主機／服務擁有它、如何解析引用，以及離線時還能使用什麼 |
+| 複寫資料庫 | 共用的專案身分、同步傳輸、衝突處理、新鮮度、備份，以及原子認領的適用範圍 |
+
+離線快照必須保留來源與最後觀察時間。未知不代表空白、完成或可安全認領。
+離線記錄可以保持待同步；並行修改的驗收條件與完成回報，不能默默抹去人的決定。
+如果追蹤工具的合併政策無法保留這項區別，就需要限制寫入者安排或採用另一種流程，
+試用才能依賴它。
+
+dev 本身不會同步筆記或 catalog 檔案。它目前的 [fleet 快照][dev-fleet]
+攜帶的是每個 repository 的 task 數量，不是共用工作項目或人類決策佇列。
+因此，能做遠端導覽並不代表已建立共用待辦的權威來源。
+在機器間複製 task TOML 或 runtime 資料庫，也不能取代這項設計。
+
+## dev 應該改什麼？
+
+**目前先釐清分工，再試用工作流程。** 永久的工作項目儲存，在概念上接近 Beads。
+dev 有用的貢獻仍是 repository 發現、checkout／runtime 準備，以及有保護機制的生命週期操作。
+這值得研究整合方式，不代表要替換 taskflow。
+
+[既有的 worktree 試用][dev-trial]維持獨立。本次研究保留不使用 task 的工作方式；
+當 park/resume 與記錄下一步有幫助時，managed task 仍然有用。
+Issue 關閉不能授權清理；taskflow 仍會重新驗證 Git、runtime、artifact 與所有權。
+關閉 session 或安全退役 checkout，都不應抹去工作項目的歷史。
+
+| 階段 | 要做的工作 | 進入下一階段前需要的證據 |
+|---|---|---|
+| 現在先寫文件 | 確認術語、提案政策、來源分工與情境 | 人與 agent 能分辨建議、承諾與執行步驟 |
+| 試用既有介面 | 在選定的兩個 repository 與兩台 devbox，試用 Herdr 原生視圖，或既有 inbox 搭配明確的摘要操作流程 | 記錄找得回來、人確實會回看待決事項，交接也保留同一項目身分 |
+| 補最小的缺口 | 依觀察到的不足，評估快速記錄 helper、明確的工作項目引用，或範圍受限的彙整視圖 | 問題無法由選定的追蹤工具、原生 UI 或小幅流程調整充分解決 |
+
+真正試用前，先記錄安裝版本、選定的權威來源、讀取／同步副作用、主機／repository 涵蓋範圍，
+以及如何保留／匯出試用中的工作。不要只因指令看似讀取，就在 dev 一般重新整理時呼叫追蹤工具；
+讀取也可能初始化、遷移或同步狀態。本次文件變更不包含安裝、遷移或排程工作。
+
+如果之後確實需要寫程式，應保留追蹤工具的身分，而非把它的待辦鏡像到 dev tasks。
+新增 Task TOML 欄位需要獨立的版本與降級設計：舊版 binary 重新寫入時可能抹去未知欄位。
+本提案沒有新增 CLI、JSON 契約、持久化 schema 或自動完成同步。
+
+## 試用情境與決策記錄
+
+以下是驗收情境，**不是已通過的測試結果**。請把觀察與選定的下一步
+記錄在既有試用研究旁。
+
+| 情境 | 預期驗證的行為 |
+|---|---|
+| 在 repository 之外記下一句想法 | 不要求 branch、優先順序或完整 issue 表單就能持久保存，而且人能再次找到 |
+| 數個 agent 產生大量發現 | 提案維持獨立；相關發現可分組、批次決定，不必讀完每個執行步驟 |
+| 在已接受的目標內工作 | Agent 自主重現、實作與測試，不為每個內部步驟要求核准 |
+| 在 A 研究、B 實作，之後再審查 | 同一工作項目保留條件、證據，以及可解析的執行引用 |
+| 兩個名稱相近的 repository 或獨立資料庫 | 不依標題、branch、路徑或缺少來源範圍的 ID 合併項目 |
+| 主機無法使用或發生並行編輯 | 過時／待同步狀態可見；不產生假完成、遺失決定或未受支援的全域認領 |
+| Runtime 改變或 checkout 退役 | 工作項目繼續存在；清理依其自身的新鮮檢查進行 |
+| 隔一段時間後回來工作 | 人能找出需要決定的事並採取行動，不必重建每段 agent 對話 |
+
+每次試用都記下記錄想法的阻力、人實際在哪裡閱讀與回覆、重複輸入、缺少的脈絡，
+以及手動對帳的情況。如實標記未曾查看的視圖與尚未測試的情境。
+追蹤工具產生更多項目，或 agent 完成更多步驟，都不代表人的參與改善了。
+
+## 來源與 revision 範圍
+
+- dev-cli：來源快照 `531f2661307c366b23f9421ba369a5bc21b7d6f5`；
+  [task 模型][dev-task]、[fleet 呈現資料][dev-fleet]、[先前試用][dev-trial]。
+- agent-skills：查閱的本地來源快照
+  `7f295df170245f1d5512fc02c4f8dd90604e9472`；[PKH 追蹤工具規則][pkh]、
+  [forge 慣例][forge-native]、[待辦遷移][skills-todo]。
+- td `359fd41c17729cff3e5c23ba5478b44cc162096f`：[README／審查政策][td]
+  與[同步設定][td-sync]。
+- Sidecar `2a2978a8a3e56f61d10f27edf4e17e4cc4a5d8b0`：[個人 Tasks][sidecar-tasks]。
+- Beads `e226083653b893998614df4225f73b6688ca9166`：[README／儲存方式][beads]；
+  [TODO][beads-todo]、[人類介入][beads-human]與[同步][beads-sync]為持續更新的文件，
+  於上方日期查閱。
+- Dolt `9138543aa63438ef1124731a92424366302c9641`：[版本化資料庫概覽][dolt]。
+- Herdr UI `a5b2df2db54061cd2785c3ddf184bce348be3fd1`：
+  [Orchestrator][herdr-orchestrator] 與 [Beads CLI adapter][herdr-beads]。
+- 持續更新的服務文件：[GitHub Projects][github-projects]、
+  [Linear Triage][linear-triage] 與[指派／委派][linear-assignment]。
+
+## 相關頁面
+
+- [心智模型與生命週期](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/)
+- [Worktree 與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/)
+- [Repository 快速筆記](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)
+- [遠端 repository fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/)
+- [來源與時效](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/)
+
+[dev-task]: https://github.com/daviddwlee84/dev-cli/blob/531f2661307c366b23f9421ba369a5bc21b7d6f5/internal/task/task.go
+[dev-fleet]: https://github.com/daviddwlee84/dev-cli/blob/531f2661307c366b23f9421ba369a5bc21b7d6f5/internal/fleet/types.go
+[dev-trial]: https://github.com/daviddwlee84/dev-cli/blob/531f2661307c366b23f9421ba369a5bc21b7d6f5/backlog/project-navigation-and-task-trial.md
+[pkh]: https://github.com/daviddwlee84/agent-skills/blob/7f295df170245f1d5512fc02c4f8dd90604e9472/skills/local/project-knowledge-harness/references/integrating-trackers.md
+[forge-native]: https://github.com/daviddwlee84/agent-skills/blob/7f295df170245f1d5512fc02c4f8dd90604e9472/skills/local/forge-native-dev/SKILL.md
+[skills-todo]: https://github.com/daviddwlee84/agent-skills/blob/7f295df170245f1d5512fc02c4f8dd90604e9472/TODO.md
+[github-projects]: https://docs.github.com/en/issues/planning-and-tracking-with-projects/learning-about-projects/about-projects
+[linear-triage]: https://linear.app/docs/triage
+[linear-assignment]: https://linear.app/docs/assigning-issues
+[td]: https://github.com/marcus/td/blob/359fd41c17729cff3e5c23ba5478b44cc162096f/README.md
+[td-sync]: https://github.com/marcus/td/blob/359fd41c17729cff3e5c23ba5478b44cc162096f/docs/guides/sync-setup-guide.md
+[sidecar-tasks]: https://github.com/marcus/sidecar/blob/2a2978a8a3e56f61d10f27edf4e17e4cc4a5d8b0/website/docs/tasks.md
+[beads]: https://github.com/gastownhall/beads/blob/e226083653b893998614df4225f73b6688ca9166/README.md
+[beads-todo]: https://beads.gascity.com/workflows/todo
+[beads-human]: https://beads.gascity.com/cli-reference/human
+[beads-sync]: https://beads.gascity.com/core-concepts/sync-concepts
+[dolt]: https://github.com/dolthub/dolt/blob/9138543aa63438ef1124731a92424366302c9641/README.md
+[herdr-orchestrator]: https://github.com/penso/herdr-gpui/blob/a5b2df2db54061cd2785c3ddf184bce348be3fd1/crates/herdr-gpui/README.md#orchestrator
+[herdr-beads]: https://github.com/penso/herdr-gpui/blob/a5b2df2db54061cd2785c3ddf184bce348be3fd1/crates/herdr-orchestrator/src/beads.rs
 
 ---

@@ -2,14 +2,29 @@
 description: Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 authority: project
 status: stable
-verified_on: 2026-09-24
+verified_on: 2026-10-29
 ---
 
 # Mental model and lifecycle
 
 A submodule superproject has several independent Git histories. Workspace member intent links selected child branches to one outer task without adding lifecycle states. See [Submodule workspaces](../guides/submodule-workspaces.md): initialization stays at gitlinks, Cold requires recovery, and Retire also requires child integration.
 
-`dev` treats a unit of work as a **change stream** whose durable identity is its Git branch. The checkout and runtime are replaceable projections of that stream.
+`dev` records a **change stream** as a task whose durable code identity is its Git branch. The checkout and runtime are replaceable projections of that stream.
+
+A **work item** describes an intended outcome and its acceptance criteria. It may
+span several change streams, machines, and agent sessions; one stream may also
+contribute to several work items. A session supplies execution context, and its
+ending does not establish that an outcome is accepted. These relationships do
+not require a one-to-one mapping. Current `dev` tasks record checkout lifecycle
+intent; they do not persist structured work-item associations or resume an agent
+conversation.
+
+Task tracking is optional. Choose `dev work start` when recorded park/resume and
+retirement are useful; repository navigation and task-free worktree cleanup
+remain available without a task. Keep ideas, agent proposals, and accepted work
+in the project's chosen work-item source. See the research note on
+[human and agent work items](../notes/human-agent-work-items.md) for the proposed
+workflow and evaluation criteria.
 
 ## Four responsibilities
 

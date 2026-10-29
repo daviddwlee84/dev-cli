@@ -11,12 +11,19 @@ sidebar grows until it is no longer scannable, which defeats its purpose.
 `dev` gives that record a home outside the runtime. Then closing a session is
 just closing a session.
 
+A dev task records a branch-backed change stream. A work item can span several
+streams and agent sessions; its acceptance remains in the project's chosen source.
+Choose task registration when recorded park/resume and retirement help. An idea,
+issue, or agent substep does not require a dev task; task-free worktrees support
+guarded cleanup too. Resuming a task reopens checkout/runtime, not an agent conversation.
+
 ## Pick a checkout mode first
 
 A task is intent, not necessarily a worktree:
 
 ```bash
 dev repo open api                         # ad hoc; no task at all
+dev git worktree create feat/auth --base main # isolation; no task record
 dev work start api --task "typo" --direct      # current branch, usually main
 dev work start api --task "small" --branch-only --base main
 dev work start api --task "parallel" --base main  # default worktree
@@ -41,8 +48,9 @@ persisted states. `dev repo flow [repo]` previews this graph for one repository:
 Enter builds a guarded plan, then a separate approval applies it. Completion
 writes DONE but retains branch/checkout/runtime; Retire performs cleanup.
 
-Aim for **three to seven hot tasks per machine**. That is a cognitive limit,
-not a technical one.
+Keep active change streams few enough to review. Park registered streams that
+you plan to resume; keep unstarted ideas and agent proposals in the chosen
+work-item source.
 
 ## Parking
 

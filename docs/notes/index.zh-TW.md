@@ -2,7 +2,7 @@
 description: 整理未來 dev-cli、Git、harness、experiment、incident 與 source-review notes，不讓 main guides 失去穩定性。
 authority: project-policy
 status: maintained
-verified_on: 2026-08-28
+verified_on: 2026-10-29
 lang: zh-TW
 ---
 
@@ -47,6 +47,7 @@ draft → verified → maintained
 |---|---|---|---|---|
 | [撰寫筆記](authoring.md) | recipe | maintained | 2026-08-28 | page template、雙語/source rules 與 validation loop |
 | [AI pull-request review options](ai-pr-review-options.zh-TW.md) | source-review | evolving | 2026-09-01 | 哪一種 reviewer 需要 workflow 檔案，以及各自期待的 trigger phrase |
+| [人與 Agent 的工作項目](human-agent-work-items.md) | decision / source-review | evolving | 2026-10-29 | 分開跨 repo／devbox 的建議、已接受成果與執行細節；先驗證流程，再評估 dev tracker 整合 |
 
 ## 規則
 

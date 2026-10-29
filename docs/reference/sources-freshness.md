@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-24
+verified_on: 2026-10-29
 ---
 
 # Sources and freshness
@@ -70,6 +70,7 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
+| human/agent work-item separation, tracker comparison and staged cross-devbox trial | [Human and agent work items](../notes/human-agent-work-items.md) | dated maintainer feedback, `internal/task`, `internal/fleet`, pinned upstream sources and agent-skills references listed in the note | source review 2026-10-29; installed-version compatibility and workflow trial not tested |
 | SSH profile tree, native discovery/setup, durable usage/tests and guided TUI recovery | [SSH dashboard](../guides/ssh-hosts.md#ssh-connection-view), [problem guidance](../guides/dashboard-actions.md) | `internal/tui`, `internal/sshactivity`, `internal/tuiissue`, native discovery/onboarding tests and isolated PTY smoke | v0.2.37 |
 | SSH key destinations, named agents/v2, FIDO and explicit vault creation | [SSH key providers](../guides/ssh-hosts.md) | `internal/sshhost`, `internal/sshvault`, CLI/TUI regressions and isolated native-fixture smokes | v0.2.38; real vault/hardware operations not exercised |
 | Native Android/Termux SSH filesystem support | [SSH dashboard](../guides/ssh-hosts.md#ssh-connection-view), [compatibility](compatibility.md) | `internal/platformfs`, native Android domain/TUI tests and actual config-only dashboard setup | v0.2.36; verified on ARM64 Android on 2026-09-13 |

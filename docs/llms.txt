@@ -63,6 +63,7 @@
 - [Notes index](https://daviddwlee84.github.io/dev-cli/notes/): Organize future dev-cli, Git, harness, experiment, incident, and source-review notes without destabilizing the main guides.
 - [Authoring notes](https://daviddwlee84.github.io/dev-cli/notes/authoring/): Use a repeatable metadata, source, bilingual-writing, and verification template for every new documentation note.
 - [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/notes/ai-pr-review-options/): Compare Claude Code Review, the Claude Code GitHub Action, Codex code review, and CodeRabbit by trigger phrase, workflow requirement, prerequisites, and cost.
+- [Human and agent work items](https://daviddwlee84.github.io/dev-cli/notes/human-agent-work-items/): Separate human intent, agent proposals, execution and sessions; compare work-item tools and plan a low-friction workflow across repositories and devboxes.
 
 ## 繁體中文
 
@@ -125,3 +126,4 @@
 - [筆記索引](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/): 整理未來 dev-cli、Git、harness、experiment、incident 與 source-review notes，不讓 main guides 失去穩定性。
 - [撰寫筆記](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/authoring/): 對每份新 documentation note 使用可重複的 metadata、source、bilingual writing 與 verification template。
 - [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/ai-pr-review-options/): 依觸發字串、是否需要 workflow、前置條件與費用，比較 Claude Code Review、Claude Code GitHub Action、Codex code review 與 CodeRabbit。
+- [人與 agent 的工作項目](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/human-agent-work-items/): 區分人類意圖、agent 提案、執行與 session；比較工作項目工具，規劃跨 repository 與 devbox 的低負擔工作流程。

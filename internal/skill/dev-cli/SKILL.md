@@ -5,8 +5,8 @@ description: Use dev for repository discovery and setup, task and worktree lifec
 
 # dev-cli
 
-Git owns durable code; worktrees are local checkouts; runtimes are host-local
-sessions; dev records task intent.
+Git owns code; a dev task records a branch-backed change stream. Work items may
+span streams and agent sessions; runtimes remain host-local.
 
 ## Discover what you need
 
@@ -22,8 +22,8 @@ others require preview/apply. Do not preload manuals or run routine diagnostics.
   explicit `--base`. Managed worktrees stay outside repositories.
 - Task-free worktrees use `dev git worktree create/open`; cleanup stays reviewed.
   `dev repo list --json` supplies navigation candidates, not external preferences/history.
-- `dev work start` prepares checkout/runtime; agent launch is explicit. Parallel
-  writers require disjoint ownership and verified targets.
+- Choose `dev work start` for recorded park/resume/retirement; it prepares
+  checkout/runtime. Agent launch is explicit; parallel writers need disjoint ownership and verified targets.
 - Completion, artifacts, retirement and branch deletion are separate. Finalize
   after writer exit; retire externally. Use `retire --base` when integration is unproven.
 - Cached/unknown observations, runtime `done` and merged PRs never authorize

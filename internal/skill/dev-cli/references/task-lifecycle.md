@@ -13,6 +13,22 @@ recovery; member intent is versioned separately from legacy task TOML.
 Read this when work needs to be paused, picked up on another machine, or when
 a machine has accumulated more open sessions than anyone can hold in mind.
 
+## Work items, change streams, and sessions
+
+A work item records an intended outcome and acceptance criteria in the project's
+chosen source. A dev task records a branch-backed change stream and its checkout
+lifecycle. An agent session supplies execution context. One work item may span
+several streams and sessions, and one stream may contribute to several items.
+Do not create a dev task merely to mirror an issue, capture an idea, or record
+every agent substep. Current dev does not persist structured work-item links or
+resume agent conversations; runtime handles remain advisory.
+
+Choose task registration when recorded park/resume and retirement help. Task-free
+worktrees still support guarded cleanup. Work-item acceptance, agent completion,
+Git integration, and local retirement remain separate decisions. See the
+[human and agent work-item research](https://github.com/daviddwlee84/dev-cli/blob/main/docs/notes/human-agent-work-items.md)
+for proposed collaboration practices and evaluation criteria.
+
 ## The problem
 
 A terminal multiplexer's sidebar is a *runtime* view: it shows what is running
@@ -25,11 +41,13 @@ not the runtime.
 
 ## Pick a checkout mode before a lifecycle
 
-A task records human intent; it does not imply a worktree:
+A task records change-stream intent; choose whether to register one before
+selecting its checkout mode:
 
 | Command | Checkout boundary | Use when |
 |---|---|---|
 | `dev repo open api` | none; no task | browsing or truly ad-hoc work |
+| `dev git worktree create feat/auth --base main` | branch + linked worktree; no task | isolation without recorded park/resume |
 | `dev work start api -t typo --direct` | current branch, usually main | one short tracked change |
 | `dev work start api -t small --branch-only --base main` | branch in canonical checkout | lightweight isolation, no concurrency |
 | `dev work start api -t auth --base main` | branch + linked worktree | interruption, experiment, parallel writer |
@@ -118,8 +136,9 @@ plans point to the compatible CLI fallback instead of adding a force path.
 both. Remote evidence is run-local and limited to named refs plus review
 existence/state/draft/URL/provider/time—not checks or review decisions.
 
-**A machine should hold roughly three to seven hot tasks.** That is a
-cognitive limit, not a technical one. Everything else belongs in `dev work list`.
+Keep active change streams few enough to review. Park registered streams that
+you plan to resume; keep unstarted ideas and agent proposals in the chosen
+work-item source rather than filling `dev work list` with backlog entries.
 
 ## Parking
 

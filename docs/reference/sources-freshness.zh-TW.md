@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-09-24
+verified_on: 2026-10-29
 lang: zh-TW
 ---
 
@@ -74,6 +74,7 @@ tested_with: optional
 
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
+| 人與 agent 的工作項目分層、tracker 比較與分階段跨 devbox 試驗 | [人與 Agent 的工作項目](../notes/human-agent-work-items.md) | 註明日期的維護者回饋、`internal/task`、`internal/fleet`，以及筆記列出的固定版本上游來源與 agent-skills references | 2026-10-29 來源查核；未實測安裝版本相容性與協作流程 |
 | SSH profile tree、原生 discovery/setup、durable 使用／測試紀錄與 TUI 問題引導 | [SSH dashboard](../guides/ssh-hosts.zh-TW.md#ssh-connection-view)、[問題引導](../guides/dashboard-actions.zh-TW.md) | `internal/tui`、`internal/sshactivity`、`internal/tuiissue`、native discovery/onboarding tests 與隔離 PTY smoke | v0.2.37 |
 | SSH key destination、named agent／v2、FIDO 與明確 vault creation | [SSH key providers](../guides/ssh-hosts.zh-TW.md) | `internal/sshhost`、`internal/sshvault`、CLI／TUI 回歸與隔離 native-fixture smoke | v0.2.38；未執行真實 vault／hardware 操作 |
 | 原生 Android／Termux SSH 檔案系統支援 | [SSH dashboard](../guides/ssh-hosts.zh-TW.md#ssh-connection-view)、[相容性](compatibility.zh-TW.md) | `internal/platformfs`、原生 Android domain／TUI tests 與 dashboard config-only 實測 | v0.2.36；2026-09-13 於 ARM64 Android 驗證 |

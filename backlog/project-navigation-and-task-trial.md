@@ -1,7 +1,9 @@
 # Shared repository navigation and task lifecycle trial
 
-Status: prototype and repeatable trial; no task command deprecation. Reviewed
-2026-09-25 against Sidecar 1.14.0 and td 0.65.0. Human preference remains untested.
+Status: research, prototype and repeatable trial; no new task backend or task
+command deprecation. Prototype reviewed 2026-09-25 against Sidecar 1.14.0 and
+td 0.65.0. User feedback recorded 2026-10-29; the formal two-route trial has not
+been performed.
 
 ## Intent
 
@@ -13,6 +15,26 @@ list. Evaluate whether Git evidence and explicit external cleanup suffice.
 REPOS remains useful independently: supply one local candidate source to
 Sidecar, Neovim and optional terminal pickers, while each tool keeps its own
 preferences, sessions and genuine recent-use history.
+
+## User feedback — 2026-10-29
+
+The maintainer reports that dev tasks are rarely used, and td/Sidecar is rarely
+opened in projects where it has been tried. Storing more work items or adding
+another board therefore does not by itself make the work easier to revisit.
+This is feedback about current usage, not a completed comparison of the two
+isolated worktree routes below.
+
+The target is personal work with multiple agents across devboxes. Prefer a
+lightweight entry point where a person can capture a short thought and return
+to the few items needing attention. Keep agent suggestions separate from
+accepted work, and keep detailed execution steps subordinate to the durable
+work item. An issue may span several agent sessions; a session is not its
+identity or completion criterion.
+
+The [human–agent work-item design note](../docs/notes/human-agent-work-items.md)
+develops this distinction between capture, accepted intent, execution and
+human attention. It also compares the roles of Herdr, td/Sidecar, Beads and
+hosted trackers without selecting a new dev backend.
 
 ## Implemented boundary
 
@@ -29,6 +51,25 @@ preferences, sessions and genuine recent-use history.
   feedback checklist. One route is Herdr/dev without task records; the other
   is Sidecar-owned workspace lifecycle. Each checkout has one mutation owner.
 
+## Next evaluation sequence
+
+1. Document the work-item model and routing first: preserve short human
+   captures, distinguish suggestions from accepted work, and link execution
+   context to its authoritative work item without duplicating its backlog.
+2. Try native UI entry points and explicit agent recipes in the existing
+   workflow. Record whether the maintainer actually revisits them, can find
+   the next decision, and can resume the same intent from another session or
+   devbox. Keep this work-item trial distinct from the two-route worktree
+   lifecycle trial.
+3. Propose the smallest dev capability only for friction observed in those
+   trials. A backend adapter, another dashboard or a task-model change is not
+   a prerequisite. Preserve existing task records, lifecycle safety and
+   structured-output compatibility.
+
+This sequence does not introduce a new tracker backend, automatically sync
+work items, or deprecate task commands. td/Sidecar and Beads remain optional
+tools to evaluate, not required dependencies.
+
 ## Acceptance and decision
 
 An open PR remains active. After exact branch commits are contained in main,
@@ -37,9 +78,10 @@ separate evidence. Review remaining transcript diffs after writer exit; neither
 their path nor an agent/td completion status is discard authority. Dirty
 products, incomplete observation and changed plan authority remain blockers.
 
-The trial records navigation/setup effort, repeated metadata, confirmation
-steps, ability to resume, branch-list clarity and reclaimed disk space. Keep
-human feedback blank until a person actually uses both workflows.
+The worktree trial records navigation/setup effort, repeated metadata,
+confirmation steps, ability to resume, branch-list clarity and reclaimed disk
+space. Keep its formal feedback checklist blank until a person actually uses
+both workflows; the 2026-10-29 usage report is not a passing trial result.
 
 If task-free work covers the real workflow, move managed task lifecycle out of
 the recommended entry path before considering formal deprecation. Preserve

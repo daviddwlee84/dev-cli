@@ -2,7 +2,7 @@
 description: Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 authority: project
 status: stable
-verified_on: 2026-09-24
+verified_on: 2026-10-29
 ---
 
 # Worktrees and provisioning
@@ -19,7 +19,10 @@ A Git worktree begins as a clean checkout. `dev` owns durable change-stream work
 | harness-scoped isolation | Claude Code or another harness | harness-owned directory such as `.claude/worktrees/<name>/` | governed by that harness's retention and safe-cleanup rules; Flow never adopts or removes it |
 | externally created linked worktree | external until adopted | tool-specific | visible to `dev`/`dev repo flow`; unmanaged until explicit adoption |
 
-Use `dev` when code, history, or plans must remain reviewable or a human may return later. Do not nest a long-lived `dev` worktree inside a repository; file watchers, language servers, backup tools, and searches in the outer checkout would see a second copy of the tree.
+Use `dev` for its configured worktree placement, provisioning, and guarded cleanup.
+Task registration is a separate choice. Do not nest a long-lived `dev` worktree
+inside a repository; file watchers, language servers, backup tools, and searches
+in the outer checkout would see a second copy of the tree.
 
 `dev` creates the checkout with Git at its configured path. Herdr only opens that existing path, so worktree placement remains identical on machines without Herdr.
 
@@ -34,7 +37,11 @@ lifecycle mutation. See [Repository lifecycle flow](repository-flow.md).
 Task registration is optional. To create a checkout without a dev task, use
 `dev git worktree create feat/example --base main`; Git keeps the branch and
 checkout after its runtime closes. Opening it later does not require adoption.
-Choose `dev work start` when its recorded park/resume lifecycle is useful.
+Choose `dev work start` when its recorded park/resume and retirement lifecycle
+is useful. A task tracks a branch-backed change stream; an issue can span several
+streams and sessions. Creating a work item does not require creating a task,
+branch, worktree, or agent session. See
+[human and agent work items](../notes/human-agent-work-items.md) for that distinction.
 
 For task-free cleanup after integration, run from the canonical checkout and
 outside the target runtime:
@@ -57,7 +64,7 @@ navigation is independent too: `dev repo list --json` can supply editor and
 Sidecar candidates on demand. Keep native session/history/configuration state
 with each tool instead of synchronizing it as a second repository catalog.
 
-Prefer `dev work start` with an explicit committed base for new managed work:
+When choosing a managed task, use `dev work start` with an explicit committed base:
 
 ```bash
 dev work start api --task "auth fix" --branch fix/auth --base main

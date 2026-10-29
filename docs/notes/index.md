@@ -2,7 +2,7 @@
 description: Organize future dev-cli, Git, harness, experiment, incident, and source-review notes without destabilizing the main guides.
 authority: project-policy
 status: maintained
-verified_on: 2026-08-28
+verified_on: 2026-10-29
 ---
 
 # Notes index
@@ -43,6 +43,7 @@ When a note is added, list it here with type, status, verification date, and one
 |---|---|---|---|---|
 | [Authoring notes](authoring.md) | recipe | maintained | 2026-08-28 | page template, bilingual/source rules, and validation loop |
 | [AI pull-request review options](ai-pr-review-options.md) | source-review | evolving | 2026-09-01 | which reviewer needs a workflow file, and the exact trigger phrase each expects |
+| [Human and agent work items](human-agent-work-items.md) | decision / source-review | evolving | 2026-10-29 | separate proposals, accepted outcomes and execution across repos/devboxes; evaluate workflow before adding a dev tracker integration |
 
 ## Rules
 

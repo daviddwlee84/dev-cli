@@ -93,6 +93,7 @@ plugins:
             Notes Index: 筆記索引
             Authoring Notes: 撰寫筆記
             AI Pull-Request Review Options: AI Pull-Request Review 選項
+            Human and Agent Work Items: 人與 Agent 的工作項目
   - search
   - copy-to-llm:
       repo_url: "https://daviddwlee84.github.io/dev-cli"
@@ -180,6 +181,7 @@ nav:
       - Notes Index: notes/index.md
       - Authoring Notes: notes/authoring.md
       - AI Pull-Request Review Options: notes/ai-pr-review-options.md
+      - Human and Agent Work Items: notes/human-agent-work-items.md
 extra:
   social:
     - icon: fontawesome/brands/github

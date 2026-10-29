@@ -171,18 +171,23 @@ queries. If inventories grow into the hundreds, persist a short-lived snapshot
 and stream changed rows into the model; keep `r` as the explicit live refresh.
 
 ### P3 · M — Optional repo-local task backend adapters (td / beads)
-Keep repo-local task stores optional. Shared repo navigation and the isolated
-Herdr/Sidecar worktree trial now provide a smaller integration boundary; assess
-task lifecycle retirement from real usage before adding issue adapters:
+Keep repo-local task stores optional. Feedback on 2026-10-29: dev tasks are
+rarely used and td/Sidecar is rarely opened. First document a lightweight
+human/agent workflow for personal work across devboxes, separating suggestions
+from accepted work and durable work items from agent sessions. Then try native
+UI entry points and explicit recipes; propose the smallest dev capability only
+for observed friction:
 
 - td: <https://sidecar.haplab.com/docs/td>
 - beads: <https://github.com/gastownhall/beads>
 
-Both may create dot-folders inside a repo. An adapter should report which
-backend is present, delegate through its CLI, and avoid copying its task data
-into dev's own notes/tasks. Decide only after comparing lifecycle, multi-agent
-locking, git noise, cross-machine sync, archival and uninstall behavior. Until
-then, retain existing task compatibility and keep td/Sidecar optional.
+No new backend or task deprecation is selected. If trials justify an adapter,
+report the selected backend, delegate through its CLI, and avoid copying its
+work-item data into dev's notes/tasks. Evaluate lifecycle, multi-agent locking,
+git noise, cross-machine sync, archival and uninstall behavior. Keep the formal
+Herdr/Sidecar worktree trial pending; usage feedback does not establish that
+either route passed it.
+→ [human–agent work-item model](docs/notes/human-agent-work-items.md)
 → [research and trial criteria](backlog/project-navigation-and-task-trial.md)
 
 ### P3 · M — Extend picker beyond repository entry points

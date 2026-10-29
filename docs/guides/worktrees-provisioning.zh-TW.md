@@ -2,7 +2,7 @@
 description: 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 authority: project
 status: stable
-verified_on: 2026-09-24
+verified_on: 2026-10-29
 lang: zh-TW
 ---
 
@@ -23,7 +23,9 @@ Git worktree 一開始是乾淨 checkout。`dev` 擁有持久變更流 (change s
 | harness-scoped isolation | Claude Code 或其他 harness | harness-owned path，例如 `.claude/worktrees/<name>/` | 由該 harness 的 retention 與 safe-cleanup 規則管理；Flow 不會 Adopt/Remove |
 | 外部建立的 linked worktree | adoption 前由外部管理 | tool-specific | `dev`/`dev repo flow` 可看見；只有明確 Adopt 後才有 managed lifecycle |
 
-Code、history 或 plans 需要保持可 review，或人之後可能回來時，使用 `dev`。不要把長期 `dev` worktree 巢狀放在 repository 內；外層 checkout 的 file watcher、language server、backup tool 與搜尋會看到第二份 tree。
+需要設定的 worktree placement、provisioning 與受保護的 cleanup 時，使用 `dev`；
+是否登記 task 是另一個選擇。不要把長期 `dev` worktree 巢狀放在 repository 內；
+外層 checkout 的 file watcher、language server、backup tool 與搜尋會看到第二份 tree。
 
 `dev` 使用 Git 在設定路徑建立 checkout；Herdr 只開啟現有 path，因此沒有 Herdr 的機器仍維持相同 placement policy。
 
@@ -33,8 +35,10 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 
 Task 登記是可選的。`dev git worktree create feat/example --base main`
 可以建立沒有 dev task 的 checkout；關閉 runtime 後 Git branch 與 checkout
-仍然存在，之後開啟也不需要 Adopt。需要記錄 park/resume lifecycle 時才選
-`dev work start`。
+仍然存在，之後開啟也不需要 Adopt。需要記錄 park/resume 與 retirement lifecycle
+時才選 `dev work start`。Task 追蹤以 branch 為基礎的 change stream；一個 issue
+可以跨越多個 stream 與 session。建立工作項目不需要同時建立 task、branch、
+worktree 或 agent session。區別見[人與 Agent 的工作項目](../notes/human-agent-work-items.md)。
 
 整合後要清理沒有 task 的 worktree，從 canonical checkout、目標 runtime 外執行：
 
@@ -54,7 +58,7 @@ checkout/runtime/artifact 檢查；squash merge 不一定符合 ancestry。
 `dev repo list --json` 可按需提供 editor 與 Sidecar 候選；session、history
 及設定由各工具管理，不同步成第二份 repository catalog。
 
-新的 managed 工作優先使用 `dev work start`，明確指定已 commit 的 base：
+選用 managed task 時，以 `dev work start` 明確指定已 commit 的 base：
 
 ```bash
 dev work start api --task "auth fix" --branch fix/auth --base main
