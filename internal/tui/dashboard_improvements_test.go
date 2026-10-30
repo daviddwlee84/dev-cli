@@ -186,6 +186,98 @@ func TestDashboardFilterNavigationEveryView(t *testing.T) {
 	}
 }
 
+func TestDashboardFilterActionMenuEveryView(t *testing.T) {
+	for _, view := range Views {
+		t.Run(view.String(), func(t *testing.T) {
+			m := dashboardFilterModel(t, view)
+			m.setAt(1)
+			m.input.SetCursor(2)
+			selected := m.currentToken()
+			next, command := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+			m = next.(Model)
+			if command != nil || m.overlay.kind != overlayActionMenu || m.overlay.selection != selected || m.currentToken() != selected || m.mode != modeList || m.input.Focused() || m.input.Value() != "match" || m.input.Position() != 2 || m.filter != "match" {
+				t.Fatalf("Ctrl+O lost filter/selection or failed to open actions: mode=%v overlay=%v query=%q", m.mode, m.overlay.kind, m.filter)
+			}
+			next, command = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+			m = next.(Model)
+			if command != nil || m.overlay.kind != overlayNone || m.mode != modeList || m.input.Focused() || m.filter != "match" || m.currentToken() != selected || m.quitting {
+				t.Fatal("closing actions returned to input or discarded the confirmed filter/selection")
+			}
+		})
+	}
+}
+
+func TestDashboardFilterActionMenuEmptyResults(t *testing.T) {
+	for _, view := range Views {
+		t.Run(view.String(), func(t *testing.T) {
+			m := dashboardFilterModel(t, view)
+			m = startupSend(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("-absent")})
+			next, command := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+			m = next.(Model)
+			if command != nil || m.count() != 0 || m.overlay.kind != overlayActionMenu || m.mode != modeList || m.input.Focused() || m.filter != "match-absent" {
+				t.Fatal("empty filter did not follow normal list action-menu behavior")
+			}
+			for _, option := range m.overlay.options[:m.overlay.optionCount] {
+				if spec, ok := findAction(view, option.action); ok && spec.Scope == actionSelection {
+					t.Fatalf("empty filter offered selection-dependent action %v", option.action)
+				}
+			}
+		})
+	}
+}
+
+func TestDashboardFilterActionMenuRetainsPendingAndCloneGuards(t *testing.T) {
+	m := dashboardFilterModel(t, ViewRepos)
+	for i := range m.repos {
+		m.repos[i].Pending = "loading"
+	}
+	next, command := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	m = next.(Model)
+	if command != nil || m.overlay.kind != overlayActionMenu {
+		t.Fatal("pending row blocked opening its action menu")
+	}
+	m = selectMenuAction(t, m, listActionStartWorktree)
+	if m.overlay.options[m.overlay.optionIndex].disabled == "" {
+		t.Fatal("direct menu bypassed pending action readiness")
+	}
+	if _, command := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); command != nil {
+		t.Fatal("pending worktree action executed")
+	}
+	for _, phase := range []remoteClonePhase{remoteCloneRunning, remoteCloneRefreshing, remoteCloneOpening} {
+		m := dashboardFilterModel(t, ViewRepos)
+		m.remoteClone.phase = phase
+		next, command := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+		m = next.(Model)
+		if command != nil || m.overlay.kind != overlayNone || m.mode != modeList || m.input.Focused() || m.filter != "match" || !m.remoteClone.active() {
+			t.Fatalf("phase=%v: filter shortcut bypassed active-clone menu guard", phase)
+		}
+	}
+}
+
+func TestDashboardFilterActionMenuSearchIsIndependent(t *testing.T) {
+	m := dashboardFilterModel(t, ViewRepos)
+	m.setAt(1)
+	selected := m.currentToken()
+	for _, key := range []tea.KeyMsg{
+		{Type: tea.KeyCtrlO},
+		{Type: tea.KeyRunes, Runes: []rune("/")},
+		{Type: tea.KeyRunes, Runes: []rune("copy")},
+	} {
+		m = startupSend(m, key)
+	}
+	if !m.overlay.searching || m.overlay.search.Value() != "copy" || m.filter != "match" {
+		t.Fatal("action search replaced the repository filter")
+	}
+	m = startupSend(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.overlay.kind != overlayActionMenu || m.overlay.searching || m.filter != "match" {
+		t.Fatal("first Escape did not clear only the menu search")
+	}
+	m = startupSend(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.overlay.kind != overlayNone || m.mode != modeList || m.input.Focused() || m.filter != "match" || m.currentToken() != selected {
+		t.Fatal("closing the searched menu lost the confirmed repository filter")
+	}
+}
+
 func TestDashboardFilterTextEditsEveryView(t *testing.T) {
 	for _, view := range Views {
 		t.Run(view.String(), func(t *testing.T) {

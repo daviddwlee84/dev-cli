@@ -1137,7 +1137,7 @@ func (m Model) columnWidths() (name, branch, next int) {
 func (m Model) renderDetail() string {
 	if m.mode == modeFilter {
 		return "  " + styleTitle.Render("filter ") + m.input.View() +
-			"\n  " + styleHelp.Render("↑/↓ select · enter to keep it · esc to clear")
+			"\n  " + styleHelp.Render("↑/↓ select · enter to keep it · ctrl+o actions · esc to clear")
 	}
 	if m.snippetsActive() {
 		return m.renderSnippetDetail()

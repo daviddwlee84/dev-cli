@@ -71,7 +71,11 @@ press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或
 或未刪除任何字元時，保留目前結果選取。只有查詢文字真的改變才選取第一筆。
 
 Enter 保留查詢與選取並離開輸入，不會開啟該列；回到清單後再按 Enter，才執行
-所選列原本的開啟操作。篩選時按 Esc 會清除查詢。即使所選 repository 尚有
+所選列原本的開啟操作。輸入時也可直接按 Ctrl+O：保留關鍵字與目前選取、離開
+輸入並開啟原本的動作選單，不必先按 Enter。關閉選單後回到已篩選的清單，
+不會回到搜尋輸入狀態。原本的 action readiness 與 active-clone 限制仍有效；
+選單內的搜尋與清單關鍵字各自獨立。
+篩選時按 Esc 會清除查詢。即使所選 repository 尚有
 pending observations，輸入框與按鍵提示仍會顯示。Notes 搜尋仍需 Enter 才送出
 查詢；forms、SSH dialogs 與 Ctrl+O action search 保留各自的行為。
 

@@ -78,6 +78,10 @@ Only an actual query change selects the first result.
 
 Enter keeps the query and selection and exits input; it does not open the row.
 Press Enter again from the list to use the selected row's normal open action.
+Ctrl+O while typing keeps the query and selection, leaves input and opens the
+normal action menu directly, without Enter first. Closing it returns to the
+filtered list rather than the input. Existing action readiness and active-clone
+guards still apply; the menu's own search remains separate from the list query.
 Esc while filtering clears the query. The input and its key hints remain visible
 even when the selected repository has pending observations. Notes search still
 waits for Enter before querying; forms, SSH dialogs and Ctrl+O action search keep

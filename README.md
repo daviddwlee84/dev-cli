@@ -181,7 +181,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.3.3 instead when you need a reproducible install.
+# Pin @v0.3.4 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -225,7 +225,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.3.3
+  version=v0.3.4
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -1080,6 +1080,9 @@ remain query text. Left/Right/Home/End edit the text cursor without resetting th
 selection; only a changed query selects the first result. Enter keeps the query
 and selection and leaves input—it does not open the row. Press Enter again from
 the list to use its normal open action; Esc while filtering clears the query.
+Ctrl+O while typing keeps the query and selection, leaves input and opens the
+normal action menu directly, without Enter first. Closing the menu returns to
+that filtered list, not to the search input; existing action guards still apply.
 The filter prompt remains visible over pending repository details. Help index
 and result searches also support Up/Down while typing and Enter to keep selection
 without opening; article find/scroll and Notes' Enter-submit search keep their

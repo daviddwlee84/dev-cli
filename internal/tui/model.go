@@ -4044,9 +4044,12 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setActiveFilter("")
 		m.setAt(0)
 		return m, nil
-	case "enter":
+	case "enter", "ctrl+o":
 		m.mode = modeList
 		m.input.Blur()
+		if msg.String() == "ctrl+o" {
+			return m.updateList(msg)
+		}
 		return m, nil
 	case "down":
 		m.setAt(m.at() + 1)

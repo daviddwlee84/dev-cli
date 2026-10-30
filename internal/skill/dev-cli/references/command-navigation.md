@@ -56,6 +56,9 @@ Non-Git directory opening remains supported. Navigation creates no task, launche
 no agent and fetches nothing; it does not clear pending state or weaken dirty,
 lifecycle, cleanup or batch observation guards. While searching, the first Enter
 still exits input; a second Enter or `o` from the list opens the selection.
+In any dashboard list filter, Ctrl+O keeps the query and selection, exits input
+and opens the normal action menu directly without Enter first. Closing that menu
+returns to the filtered list, not to input; existing action guards still apply.
 
 ## Try graduation and demotion
 

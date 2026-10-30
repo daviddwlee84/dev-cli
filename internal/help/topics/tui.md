@@ -282,7 +282,10 @@ initiating network work. `j/k` and other letters remain text. Left/Right/Home/En
 move the text cursor; cursor-only edits and no-op deletions keep the selected
 result. Only an actual query change selects the first result. Enter retains the
 query and selection and exits input without opening the row; a later list Enter
-uses the normal open action. Esc while filtering clears the query. Pending repo
+uses the normal open action. Ctrl+O during input keeps the query and selection,
+leaves input and opens the normal action menu directly, without Enter first.
+Closing the menu returns to the filtered list, not to the input; existing action
+readiness and active-clone guards still apply. Esc while filtering clears the query. Pending repo
 details do not hide the input or its key hints. Notes search still waits for
 Enter before querying. Forms, SSH dialogs and Ctrl+O action search keep their
 existing behavior.
