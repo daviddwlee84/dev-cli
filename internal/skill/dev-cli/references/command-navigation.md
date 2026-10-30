@@ -34,6 +34,29 @@ Prefer canonical paths in new guidance. Root completion emphasizes these paths;
 shortcut argument/flag completion stays available. Reload shell integration
 after an upgrade with `dev self shell-init <shell>`.
 
+## REPOS favorites and navigation
+
+On a REPOS repository parent, `f` or **Add favorite / Remove favorite** in the
+action menu toggles durable catalog metadata, shown as `★`, without a full rescan.
+Favorites form a stable first group after normal, column or reverse sorting;
+within-group order, query matching and attached worktree children are preserved.
+This is repository-only: no FLEET, TRY or individual-worktree favorites, automatic
+recent-usage tracking, or new CLI command.
+
+Current-host favorites inside the current discovery scope get provisional rows
+even without a presentation cache and priority dispatch before ordinary
+enrichment. Normal discovery continues in the background. Missing targets stay
+unavailable without clearing their favorite.
+
+Use Enter/`o` on a cached, loading, refreshing or runtime-pending REPOS row to
+validate its exact directory, Git common-directory identity and child worktree
+registration at action time. This does not wait for global inventory or runtime
+listing, but runtime resolution and native Herdr handoff can still take time.
+Non-Git directory opening remains supported. Navigation creates no task, launches
+no agent and fetches nothing; it does not clear pending state or weaken dirty,
+lifecycle, cleanup or batch observation guards. While searching, the first Enter
+still exits input; a second Enter or `o` from the list opens the selection.
+
 ## Try graduation and demotion
 
 ### Graduation (v0.3.1)

@@ -210,6 +210,7 @@ enter/o   ad-hoc open without creating a task
 n         new repository through the clone-aware `repo new` wizard
 a/N       quick-add / browse repository notes
 space     expand linked worktrees
+f         toggle the repository parent's favorite
 m         edit repository tags/summary
 d         track direct work on the current branch
 s         start isolated work: branch + worktree + provisioning + runtime
@@ -218,6 +219,27 @@ y         open copy/context actions
 ```
 
 Expanded rows explain every linked worktree, including harness-owned `(ephemeral)` and otherwise unmanaged `(external)` checkouts. The LIVE column shows runtime activity separately from task state.
+
+On a repository parent, `f` or **Add favorite / Remove favorite** in the action
+menu toggles a durable catalog favorite, shown as `★`, without a full rescan.
+Favorites form a stable first group after normal, column or reverse sorting;
+each group's order and attached worktree children are preserved. Filters still
+exclude nonmatches. This does not add FLEET, TRY or individual-worktree favorites,
+automatic recent-usage tracking, or a CLI command.
+
+Current-host favorites inside the current discovery scope get provisional rows
+even without a presentation cache and priority dispatch before ordinary
+enrichment. Normal discovery continues in the background. Missing targets stay
+unavailable with their favorite retained.
+
+Enter/`o` can open cached, loading, refreshing or runtime-pending REPOS rows by
+validating the exact selected directory, Git common-directory identity and child
+worktree registration at action time. It does not wait for global inventory or
+runtime listing; runtime resolution and native Herdr handoff can still take time.
+Non-Git directory opening remains supported. Navigation creates no task, launches
+no agent and fetches nothing. Pending state is not cleared, and dirty-state,
+lifecycle, cleanup and batch observation guards are unchanged. During search,
+the first Enter still exits input; the next Enter or `o` from the list opens.
 
 `n` and Ctrl+O → new repository work even when REPOS is empty/filtered-empty or
 the selected row has pending observations. The action is independent of that
@@ -481,6 +503,8 @@ uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation plus a version/update row; tools, state filters and sorting are in
 `Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
+Lowercase `f` is now reserved for REPOS favorites; reassign custom tools using it
+to another available key, such as uppercase `F`.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
 within the filtered scope. Results preserve failures when returning to the
@@ -492,12 +516,15 @@ silently performed as error recovery. See [local triage](local-triage.md).
 
 ## Progressive loading, searchable actions and yearly activity
 
-REPOS first reads a dated presentation cache, then publishes discovery and Git
-observations incrementally. A slow runtime does not hold back repository rows.
-Pending/cached rows grant no authority for row-dependent actions. The new-repo
-wizard is an independent entry point and retains its final mutation checks.
-Only complete discovery removes missing rows; failures retain stale/unknown
-evidence. `r` remains local refresh; `dev self cache clear repos` removes the snapshot.
+REPOS reads a dated presentation cache and seeds in-scope favorites, then
+publishes discovery and Git observations incrementally. A slow runtime does not
+hold back repository rows. Enter/`o` validates the selected target without waiting
+for the full inventory; pending/cached observations still cannot authorize
+lifecycle, cleanup or batch actions. The new-repo wizard is an independent entry
+point and retains its final mutation checks. Only complete discovery removes
+missing ordinary rows; unavailable favorites retain their catalog preference.
+Failures retain stale/unknown evidence. `r` remains local refresh;
+`dev self cache clear repos` removes the snapshot, not favorites.
 SIZE retains its separate cache.
 
 Ctrl+O menus and submenus support `/` filtering, arrows and Enter; Escape clears

@@ -188,6 +188,7 @@ type Entry struct {
 	Name          string   `toml:"name" json:"name"`
 	Note          string   `toml:"note" json:"note"`
 	Tags          []string `toml:"tags" json:"tags"`
+	Favorite      bool     `toml:"favorite,omitempty" json:"favorite"`
 
 	// RemoteIdentity is a relocation hint, never sufficient on its own when
 	// several records or live clones could be the observation's owner.

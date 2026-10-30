@@ -467,6 +467,9 @@ func runTUI(app *App) error {
 			return agentskill.UpdateCommand(context.Background(), projectRoot, managedName, row.Scope)
 		},
 		Repos: tui.RepoActions{
+			SetFavorite: func(ctx context.Context, row tui.RepoRow, desired bool) (*catalog.Entry, error) {
+				return setRepositoryFavorite(ctx, appState.Current(), row, desired)
+			},
 			Create: func() (*exec.Cmd, error) {
 				return tuiRepoNewProcess(appState.Current())
 			},
@@ -563,16 +566,24 @@ func runTUI(app *App) error {
 		},
 
 		OpenRepo: func(ctx context.Context, r tui.RepoRow) (tui.OpenResult, error) {
-			return openResolved(ctx, r.Repo.Path, r.Repo.Name, "")
+			path, err := repo.ValidateNavigation(ctx, r.Repo, "")
+			if err != nil {
+				return tui.OpenResult{}, err
+			}
+			return openResolved(ctx, path, r.Repo.Name, "")
 		},
 
 		OpenCheckout: func(ctx context.Context, r tui.RepoRow, checkout inventory.RepoCheckout) (tui.OpenResult, error) {
+			path, err := repo.ValidateNavigation(ctx, r.Repo, checkout.Worktree.Path)
+			if err != nil {
+				return tui.OpenResult{}, err
+			}
 			branch := checkout.Branch()
 			if branch == "" {
 				branch = filepath.Base(checkout.Worktree.Path)
 			}
 			label := r.Repo.Name + "/" + branch
-			return openResolved(ctx, checkout.Worktree.Path, label, "")
+			return openResolved(ctx, path, label, "")
 		},
 
 		OpenRemote: func(ctx context.Context, r tui.RemoteRow) (tui.OpenResult, error) {
@@ -1074,107 +1085,36 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 		}
 		repos, assets = visibleRepos, visibleAssets
 	}
-	tasks := options.Tasks
-	var taskDiagnostics []task.Diagnostic
-	if !options.TasksSet {
-		tasks, taskDiagnostics, err = app.Tasks.ListWithDiagnostics()
-		if err != nil {
-			return nil, err
-		}
+	collectRow, err := prepareRepoRowCollector(ctx, app, rt, options)
+	if err != nil {
+		return nil, err
 	}
-	var taskInventoryErr error
-	for _, diagnostic := range taskDiagnostics {
-		taskInventoryErr = errors.Join(taskInventoryErr, diagnostic)
-	}
-	byRepo := map[string][]*task.Task{}
-	for _, tracked := range tasks {
-		byRepo[tracked.RepoPath] = append(byRepo[tracked.RepoPath], tracked)
-	}
-	sessions := options.Sessions
-	runtimeErr := options.SessionsErr
-	if !options.SessionsSet {
-		sessions, runtimeErr = rt.List(ctx)
-	}
-	notesByRepo := map[string][]*note.Note{}
-	if app.Notes != nil {
-		allNotes, noteErr := app.Notes.List("")
-		if noteErr != nil {
-			return nil, noteErr
-		}
-		for _, n := range allNotes {
-			notesByRepo[n.RepositoryID] = append(notesByRepo[n.RepositoryID], n)
-		}
-	}
-
 	out := make([]tui.RepoRow, len(repos))
-	// Each repo needs status, worktree and remote subprocesses. Serialising
-	// ~3*56 git processes was the measured 4.2s startup bottleneck; eight
-	// workers brings that down without forking hundreds at once. TUI callers
-	// share the limiter with task enrichment.
 	limiter := options.Limiter
 	if limiter == nil {
 		limiter = inventory.NewLimiter(8)
 	}
 	var wg sync.WaitGroup
-	for i, r := range repos {
-		wg.Add(1)
-		go func(i int, r repo.Repo) {
-			defer wg.Done()
+	// Acquire before launching: favorites receive admission first, rather than
+	// racing an unbounded goroutine per row for the shared TASKS/REPOS limiter.
+	for _, favorite := range []bool{true, false} {
+		for i, r := range repos {
+			if (assets[i] != nil && assets[i].Favorite) != favorite {
+				continue
+			}
 			release, ok := limiter.Acquire(ctx)
 			if !ok {
-				return
+				break
 			}
-			defer release()
-
-			row := tui.RepoRow{Repo: r, Asset: assets[i], ObservedAt: time.Now()}
-			if row.Asset != nil {
-				repoNotes := notesByRepo[row.Asset.ID]
-				row.NoteCount = len(repoNotes)
-				if len(repoNotes) > 0 {
-					row.LatestNote = repoNotes[0]
+			wg.Go(func() {
+				defer release()
+				row := collectRow(ctx, tui.RepoRow{Repo: r, Asset: assets[i]})
+				out[i] = row
+				if options.OnRow != nil {
+					options.OnRow(row)
 				}
-			}
-			if r.HasGit {
-				if options.DeferTopology {
-					row.TopologyPending = true
-					row.TopologyErr = errors.New("recovery details not loaded")
-				} else {
-					row.Topology, row.TopologyErr = gitx.RecoveryTopologyOf(ctx, r.Path)
-				}
-			}
-			row.Tasks = append(row.Tasks, byRepo[r.Path]...)
-			if r.RealPath != "" && r.RealPath != r.Path {
-				row.Tasks = append(row.Tasks, byRepo[r.RealPath]...)
-			}
-			row.Context = inventory.CollectRepoContext(ctx, r, row.Tasks, sessions, rt.Name())
-			row.Context.TaskErr = taskInventoryErr
-			row.Context.RuntimeErr = runtimeErr
-			row.LastActivity = row.Context.LastActivity
-			row.Worktrees = row.Context.WorktreeCount
-			if main, ok := row.Context.Main(); ok {
-				row.Status = main.Status
-				row.GitKnown = main.StatusErr == nil
-			}
-			if !r.Bare {
-				row.RemoteForge, row.RemoteName = forge.IdentityFromURL(gitx.RemoteFromConfig(r.CommonDir, "origin"))
-			}
-			if live := row.Context.Sessions(); len(live) > 0 {
-				row.Live, row.Runtime = true, rt.Name()
-				row.RuntimeHandle, row.RuntimeStatus = live[0].Handle, live[0].AgentStatus
-			}
-			if r.HasGit {
-				row.SizeTarget = diskusage.FromGit(gitx.Repo{
-					Root: r.Path, GitDir: r.GitDir, GitCommonDir: r.CommonDir,
-					MainRoot: r.MainRoot, Name: r.Name, Bare: r.Bare,
-				}, row.Worktrees)
-			} else {
-				row.SizeTarget = diskusage.Plain(r.Path)
-			}
-			out[i] = row
-			if options.OnRow != nil {
-				options.OnRow(row)
-			}
-		}(i, r)
+			})
+		}
 	}
 	wg.Wait()
 	return out, ctx.Err()

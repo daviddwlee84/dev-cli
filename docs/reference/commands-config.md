@@ -920,6 +920,8 @@ uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation plus a version/update row; tools, state filters and sorting are in
 `Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
+Lowercase `f` is now reserved for REPOS favorites; reassign custom tools using it
+to another available key, such as uppercase `F`.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
 within the filtered scope. Results preserve failures when returning to the

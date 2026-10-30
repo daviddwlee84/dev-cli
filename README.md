@@ -1134,6 +1134,24 @@ compact layout keeps repository/path in the selected detail pane. In TASKS, `p`
 parks and prompts for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
 `space` expands linked worktrees inline, `m` edits repository tags/summary,
 `s` starts an isolated worktree task, and `d` starts a tracked direct task.
+REPOS Enter/`o` can open cached, loading, refreshing or runtime-pending rows:
+it validates the exact selected directory, Git common-directory identity and
+child worktree registration at action time rather than waiting for global
+inventory or runtime listing. Runtime resolution and native Herdr handoff can
+still take time. Non-Git directory opening remains supported. Navigation creates
+no task, launches no agent and fetches nothing; pending indicators and existing
+dirty-state, lifecycle, cleanup and batch observation guards remain unchanged.
+
+On a REPOS repository parent, `f` or **Add favorite / Remove favorite** in the
+action menu toggles a durable catalog favorite, shown with `★`, without a full
+rescan. Favorites stay first after normal, column or reverse sorting, preserving
+each group's order and attached worktree children; filters still exclude
+nonmatches. Current-host favorites within the current discovery scope appear
+provisionally even without a presentation cache and receive priority enrichment
+while ordinary discovery continues. Missing targets stay unavailable with their
+favorite retained. Favorites do not apply to FLEET, TRY or individual worktrees,
+record recent usage, or add a CLI command.
+
 In REPOS, `n` or Ctrl+O → new repository suspends into the same clone-aware
 `dev repo new --handoff stay` wizard used by the CLI and returns with refreshed
 local inventory. Empty/filtered-empty lists or pending observations on the
@@ -2250,10 +2268,12 @@ folders: `DEV_TEST_NATIVE_TRASH=1 go test ./internal/desktop -run TestNativeTras
 
 
 `Ctrl+O` action menus support `/` filtering, arrow navigation and Enter. Escape
-clears search before closing the menu. REPOS first shows dated cached rows,
-then streams local discovery and Git enrichment; pending rows cannot authorize
-row-dependent actions. `n` and the new-repository menu action launch independently
-of those rows, without bypassing the wizard's final mutation checks.
+clears search before closing the menu. REPOS shows dated cached rows and
+in-scope favorite placeholders, then streams local discovery and Git enrichment.
+Enter/`o` validates the selected target without waiting for the full inventory;
+pending observations still cannot authorize lifecycle, cleanup or batch actions.
+`n` and the new-repository menu action launch independently of those rows,
+without bypassing the wizard's final mutation checks.
 `dev self cache clear repos` removes this disposable presentation cache.
 
 Selected skill removal is available through SKILLS / `dev agent skill manage`, with

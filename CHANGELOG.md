@@ -8,10 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- REPOS repository favorites: `f` or the action menu toggles a durable catalog
+  favorite, shown with `★` and grouped first without overriding filters or the
+  ordering within each group. Current-host favorites within discovery scope
+  appear provisionally even without a cache and receive priority enrichment;
+  ordinary discovery continues and unavailable targets retain their favorite.
 - Bilingual research on human/agent work items, proposal triage and cross-devbox
   handoffs compares Markdown, hosted trackers, td/Sidecar, Beads/Dolt and Herdr.
   Task guidance distinguishes durable outcomes from change streams and agent
   sessions, with staged trial criteria before adding dev integrations.
+
+### Changed
+
+- Lowercase `f` is now reserved for REPOS favorites. Custom tools previously
+  bound to it must move to another available key, such as uppercase `F`.
+- REPOS Enter/`o` validates the exact selected directory, Git common-directory
+  identity and linked-worktree registration at action time, allowing navigation
+  from cached/loading/refreshing/runtime-pending rows without waiting for global
+  inventory or runtime listing. Runtime resolution and native handoff latency
+  remain; dirty-state, lifecycle, cleanup and batch observation guards are unchanged.
 
 ## [0.3.3] - 2026-09-25
 

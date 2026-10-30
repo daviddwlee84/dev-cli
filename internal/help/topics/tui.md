@@ -155,8 +155,28 @@ REPOS shows branch, dirty state, owned logical size, linked-worktree count and
 HOT/WARM/COLD task tallies. Press `space` to expand a repo into its linked
 worktrees; each child has its own Git, runtime and task state, and enter opens
 that checkout. Git-backed Tries are shown in TRY rather than appearing twice;
-REMOTE still labels their local checkout as `try`. Repos with active work sort
-first. Press `n` in REPOS, or choose new repository in Ctrl+O, to suspend into the
+REMOTE still labels their local checkout as `try`.
+
+On a REPOS repository parent, `f` or Add favorite / Remove favorite in the action
+menu toggles durable catalog metadata, shown as `★`, without a full rescan.
+Favorites stay in a stable first group after normal, column or reverse sorting;
+within-group order and attached children are preserved, and filters still exclude
+nonmatches. Current-host favorites inside the current discovery scope appear
+provisionally even without a cache and receive priority enrichment while normal
+discovery continues. Missing targets stay unavailable with their favorite retained.
+This adds no FLEET, TRY or individual-worktree favorites, recent-usage tracking,
+or CLI command.
+
+Enter/`o` can open cached, loading, refreshing or runtime-pending REPOS rows after
+validating the exact selected directory, Git common-directory identity and child
+worktree registration at action time. It does not wait for global inventory or
+runtime listing, but runtime resolution and native Herdr handoff can still take
+time. Non-Git directory opening remains supported. Navigation creates no task,
+launches no agent and fetches nothing; pending state and existing dirty-state,
+lifecycle, cleanup and batch observation guards remain unchanged. In search,
+the first Enter still exits input; a second Enter or `o` from the list opens.
+
+Press `n` in REPOS, or choose new repository in Ctrl+O, to suspend into the
 existing clone-aware `dev repo new --handoff stay` wizard. This is independent
 of the selected row: empty/filtered-empty lists, pending observations or a row
 vanishing while the menu is open do not block launch. An active clone still
@@ -298,6 +318,7 @@ n          new repository through the clone-aware CLI wizard
 a / N      quick-add / browse repository notes
 enter / o  ad-hoc open: no task, branch or worktree
 space      expand/collapse linked worktrees
+f          toggle the repository parent's favorite
 m          edit repository tags and note
 d          track direct work on the current branch (usually main)
 s          isolated task: branch + worktree + provisioning + runtime + entry
@@ -517,6 +538,8 @@ uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation plus a version/update row; tools, state filters and sorting are in
 `Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
+Lowercase `f` is now reserved for REPOS favorites; reassign custom tools using it
+to another available key, such as uppercase `F`.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
 within the filtered scope. Results preserve failures when returning to the
@@ -527,11 +550,13 @@ silently performed as error recovery. Use `dev triage` to open the organizer.
 
 
 Ctrl+O menus: `/` filters the current menu; arrows move and Enter continues.
-Escape clears the query before closing. REPOS shows a dated cache first, then
-incremental local observations. Pending rows are display-only for row-dependent
-operations, which wait for fresh observations. REPOS `n` and the new-repository
-menu action are independent entry points; the wizard's final mutation checks
-still apply. Clear the presentation cache with `dev self cache clear repos`.
+Escape clears the query before closing. REPOS shows dated cached rows and
+in-scope favorite placeholders, then incremental local observations. Enter/`o`
+validates the selected target without waiting for the full inventory; pending
+observations still cannot authorize lifecycle, cleanup or batch actions.
+REPOS `n` and the new-repository menu action are independent entry points; the
+wizard's final mutation checks still apply. `dev self cache clear repos` clears
+the presentation cache, not durable favorites.
 
 REPOS/SKILLS Ctrl+O opens `dev agent skill manage`: project/global selection, source
 checks, reviewed multi-repo updates, and single-repo lock restore/dependency sync.

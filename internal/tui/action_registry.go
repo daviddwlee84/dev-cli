@@ -131,7 +131,7 @@ func (s ActionSpec) availability(c ActionContext) ActionAvailability {
 			}
 		}
 	}
-	if s.Scope == actionSelection && c.repo != nil && c.repo.Repo.Pending != "" {
+	if s.Scope == actionSelection && c.repo != nil && c.repo.Repo.Pending != "" && s.ID != listActionOpen && s.ID != listActionRepoFavorite {
 		a.Reason = "Waiting for fresh repository observations…"
 	} else if s.Ready != nil {
 		a.Reason = s.Ready(c)

@@ -60,6 +60,9 @@ func newActionRegistry() []ActionSpec {
 		return requires(c.model.actions.Repos.Create != nil, "Repository wizard")
 	}).Scope = actionView
 	add(ViewRepos, listActionOpen, "open repository", "enter o", nil, func(c ActionContext) string {
+		if c.repo.Repo.Unavailable != "" {
+			return c.repo.Repo.Unavailable
+		}
 		if c.repo.child() {
 			checkout, ok := c.repo.checkout()
 			if !ok || !checkout.Exists || checkout.Worktree.Prunable {
@@ -80,6 +83,20 @@ func newActionRegistry() []ActionSpec {
 		}
 		return ""
 	})
+	add(ViewRepos, listActionRepoFavorite, "toggle favorite", "f", parent, func(c ActionContext) string {
+		if c.model.repoFavoriteBusy {
+			return "Saving repository favorite…"
+		}
+		if c.repo.Repo.IsTry() {
+			return "Favorites are available for repositories, not active Tries"
+		}
+		return requires(c.model.actions.Repos.SetFavorite != nil, "Repository favorites")
+	}).Title = func(c ActionContext) string {
+		if c.repo.Repo.Favorite() {
+			return "remove favorite"
+		}
+		return "add favorite"
+	}
 	add(ViewRepos, listActionRepoMetadata, "edit repository metadata", "m", parent, func(c ActionContext) string {
 		return requires(c.model.actions.Repos.Patch != nil, "Repository metadata editing")
 	})

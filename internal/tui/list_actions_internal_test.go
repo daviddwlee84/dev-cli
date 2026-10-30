@@ -203,7 +203,7 @@ func TestPendingRepoStillBlocksRowDependentActions(t *testing.T) {
 			m := New(Actions{}, nil, []RepoRow{{Repo: repo.Repo{Name: "one", Path: "/one", HasGit: true}, Worktrees: 1, Pending: pending}})
 			m.view = ViewRepos
 			for _, action := range []listAction{
-				listActionOpen, listActionStartWorktree, listActionStartDirect, listActionRepoMetadata,
+				listActionStartWorktree, listActionStartDirect, listActionRepoMetadata,
 				listActionToggleWorktrees, listActionCopy, listActionCopyCloneURL,
 				listActionAddNote, listActionBrowseNotes, listActionStats, listActionBrowse,
 				listActionTriage, listActionHygieneRepo, listActionSkillRepo,

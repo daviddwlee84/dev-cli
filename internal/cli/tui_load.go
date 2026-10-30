@@ -64,6 +64,10 @@ type tuiLocalLoader struct {
 	collectTasks  func(context.Context, []*task.Task, tuiRuntimeSnapshot, *inventory.Limiter) ([]inventory.Row, error)
 	collectRepos  func(context.Context, []*task.Task, []repo.Repo, tuiRuntimeSnapshot, *inventory.Limiter) ([]tui.RepoRow, error)
 	collectTries  func(context.Context, bool, tuiRuntimeSnapshot) ([]tui.TryRow, error)
+
+	readRepoCatalog  func(context.Context, *App) (tuiRepoCatalog, error)
+	discoverFavorite func(context.Context, repo.Repo) (repo.Repo, error)
+	collectRepoRow   func(context.Context, tui.RepoRow) tui.RepoRow
 }
 
 func newTUILocalLoader(app *App, runtimeResolver *tuiRuntimeResolver) *tuiLocalLoader {
@@ -91,6 +95,11 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 	}
 	cachePath := filepath.Join(cacheRoot(), "repos-v1.json")
 	key := repo.SnapshotKey(appSnapshot.Cfg.DiscoveryRoots(), appSnapshot.Cfg.StateDir())
+	streaming := l.collectRepos == nil
+	presentationReady := make(chan struct{})
+	if !streaming {
+		close(presentationReady)
+	}
 
 	listTasks := l.listTasks
 	if listTasks == nil {
@@ -118,23 +127,16 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 			return snapshot, nil
 		}
 	}
+	readCatalog := l.readRepoCatalog
+	if readCatalog == nil {
+		readCatalog = readTUIRepoCatalog
+	}
+	catalogState := startTUIFuture(func() (tuiRepoCatalog, error) {
+		return readCatalog(ctx, &appSnapshot)
+	})
 	discoverRepos := l.discoverRepos
 	if discoverRepos == nil {
 		discoverRepos = func(ctx context.Context) ([]repo.Repo, error) {
-			finish := appSnapshot.trace.Start(perftrace.TUICacheReposRead, perftrace.Fields{})
-			snapshot, err := repo.ReadSnapshot(ctx, cachePath, key)
-			finish(resolverOutcome(err))
-			if err == nil {
-				rows := make([]tui.RepoRow, 0, len(snapshot.Rows))
-				for _, r := range snapshot.Rows {
-					row := tui.RepoRow{Repo: r.Repo, Status: r.Status, LastActivity: r.LastActivity, ObservedAt: snapshot.ObservedAt, Pending: "cached", GitKnown: r.GitKnown}
-					if r.Try {
-						row.Asset = &catalog.Entry{Kind: catalog.KindTry, Experiment: &catalog.Experiment{Phase: catalog.PhaseActive}}
-					}
-					rows = append(rows, row)
-				}
-				send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: rows, Valid: true, Phase: "cache"})
-			}
 			options := repo.DefaultOptions()
 			options.Workers = 8
 			var incomplete error
@@ -142,9 +144,22 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 				incomplete = errors.Join(incomplete, fmt.Errorf("discovery %s: %w", path, e))
 			}
 			options.OnCandidate = func(r repo.Repo) {
-				send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: []tui.RepoRow{{Repo: r, Pending: "loading"}}, Valid: true, Phase: "discovery"})
+				// Publish the initial presentation before discovery advances the
+				// model's phase; otherwise a fast candidate discards the cache.
+				select {
+				case <-presentationReady:
+				case <-ctx.Done():
+					return
+				}
+				row := tui.RepoRow{Repo: r, Pending: "loading"}
+				select {
+				case <-catalogState.ready:
+					row.Asset = catalogState.value.asset(r)
+				default:
+				}
+				send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: []tui.RepoRow{row}, Valid: true, Phase: "discovery"})
 			}
-			finish = appSnapshot.trace.Start(perftrace.TUIReposDiscovery, perftrace.Fields{})
+			finish := appSnapshot.trace.Start(perftrace.TUIReposDiscovery, perftrace.Fields{})
 			rows, err := repo.Discover(ctx, appSnapshot.Cfg.DiscoveryRoots(), options)
 			err = errors.Join(err, incomplete)
 			finish(resolverOutcome(err))
@@ -162,36 +177,6 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 			return rows, ctx.Err()
 		}
 	}
-	streaming := l.collectRepos == nil
-	var runtimeState *tuiFuture[tuiRuntimeSnapshot]
-	var tasks *tuiFuture[[]*task.Task]
-	collectRepos := l.collectRepos
-	if collectRepos == nil {
-		collectRepos = func(ctx context.Context, tracked []*task.Task, discovered []repo.Repo,
-			runtimeSnapshot tuiRuntimeSnapshot, limiter *inventory.Limiter) ([]tui.RepoRow, error) {
-			return collectReposWithOptions(ctx, &appSnapshot, runtimeSnapshot.runtime, repoCollectOptions{
-				IncludeTries: true, DeferTopology: true,
-				OnRow: func(row tui.RepoRow) {
-					row.Pending = "runtime pending"
-					row.Context.TaskErr = tasks.err
-					select {
-					case <-runtimeState.ready:
-						if runtimeState.err == nil {
-							joinRuntime(&row, runtimeState.value)
-							row.Pending = ""
-						}
-					default:
-					}
-					send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: []tui.RepoRow{row}, Valid: true, Phase: "enrichment"})
-				},
-				Sessions: runtimeSnapshot.sessions, SessionsSet: true,
-				SessionsErr: runtimeSnapshot.err,
-				Tasks:       tracked, TasksSet: true,
-				Repos: discovered, ReposSet: true,
-				Limiter: limiter,
-			})
-		}
-	}
 	collectTries := l.collectTries
 	if collectTries == nil {
 		collectTries = func(ctx context.Context, all bool, runtimeSnapshot tuiRuntimeSnapshot) ([]tui.TryRow, error) {
@@ -204,8 +189,8 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 		}
 	}
 
-	tasks = startTUIFuture(listTasks)
-	runtimeState = startTUIFuture(func() (tuiRuntimeSnapshot, error) {
+	tasks := startTUIFuture(listTasks)
+	runtimeState := startTUIFuture(func() (tuiRuntimeSnapshot, error) {
 		return loadRuntime(ctx)
 	})
 	repositories := startTUIFuture(func() ([]repo.Repo, error) {
@@ -231,35 +216,67 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 		})
 	})
 	producers.Go(func() {
-		tracked, tasksErr := tasks.wait(ctx)
-		discovered, reposErr := repositories.wait(ctx)
-		var runtimeSnapshot tuiRuntimeSnapshot
-		var runtimeErr error
-		if !streaming {
-			runtimeSnapshot, runtimeErr = runtimeState.wait(ctx)
-		} else {
-			runtimeSnapshot = tuiRuntimeSnapshot{runtime: runtime.None{}, err: errors.New("runtime observation pending")}
-		}
-		err := errors.Join(tasksErr, reposErr, runtimeErr)
 		var rows []tui.RepoRow
-		if ctx.Err() == nil && (err == nil || discovered != nil) {
-			finish := appSnapshot.trace.Start(perftrace.TUIProducerRepos, perftrace.Fields{View: perftrace.ViewRepos, Generation: request.ReposGeneration})
-			var collectErr error
-			rows, collectErr = collectRepos(ctx, tracked, discovered, runtimeSnapshot, limiter)
-			err = errors.Join(err, collectErr)
-			if streaming {
-				live, liveErr := runtimeState.wait(ctx)
-				err = errors.Join(err, liveErr)
-				for i := range rows {
-					rows[i].Context.TaskErr = tasksErr
-					if liveErr == nil {
-						joinRuntime(&rows[i], live)
-					} else {
-						rows[i].Context.RuntimeErr = liveErr
+		var err error
+		if streaming {
+			metadata, catalogErr := catalogState.wait(ctx)
+			if len(metadata.seeds) > 0 {
+				send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: metadata.seeds, Valid: true, Phase: "favorites"})
+			}
+			finish := appSnapshot.trace.Start(perftrace.TUICacheReposRead, perftrace.Fields{})
+			snapshot, cacheErr := repo.ReadSnapshot(ctx, cachePath, key)
+			finish(resolverOutcome(cacheErr))
+			if cacheErr == nil {
+				cached := make([]tui.RepoRow, 0, len(snapshot.Rows))
+				for _, r := range snapshot.Rows {
+					row := tui.RepoRow{Repo: r.Repo, Status: r.Status, LastActivity: r.LastActivity, ObservedAt: snapshot.ObservedAt, Pending: "cached", GitKnown: r.GitKnown, Asset: metadata.asset(r.Repo)}
+					if r.Try && row.Asset == nil {
+						row.Asset = &catalog.Entry{Kind: catalog.KindTry, Experiment: &catalog.Experiment{Phase: catalog.PhaseActive}}
 					}
+					cached = append(cached, row)
+				}
+				send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: cached, Valid: true, Phase: "cache"})
+			}
+			close(presentationReady)
+			tracked, tasksErr := tasks.wait(ctx)
+			err = errors.Join(catalogErr, tasksErr)
+			collectRow := l.collectRepoRow
+			var collectErr error
+			if collectRow == nil && ctx.Err() == nil {
+				collectRow, collectErr = prepareRepoRowCollector(ctx, &appSnapshot, runtime.None{}, repoCollectOptions{
+					IncludeTries: true, DeferTopology: true, Tasks: tracked, TasksSet: true,
+					SessionsSet: true, SessionsErr: errors.New("runtime observation pending"),
+				})
+			}
+			validate := l.discoverFavorite
+			if validate == nil {
+				validate = discoverTUIFavorite
+			}
+			finish = appSnapshot.trace.Start(perftrace.TUIProducerRepos, perftrace.Fields{View: perftrace.ViewRepos, Generation: request.ReposGeneration})
+			if collectRow != nil && ctx.Err() == nil {
+				rows, collectErr = collectTUIRepoStream(ctx, metadata, repositories, runtimeState, limiter, validate, collectRow, tasksErr,
+					func(phase string, row tui.RepoRow) {
+						send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: []tui.RepoRow{row}, Valid: true, Phase: phase})
+					})
+			} else if ctx.Err() == nil {
+				for _, row := range metadata.seeds {
+					row.Pending, row.Unavailable = "unavailable", collectErr.Error()
+					rows = append(rows, row)
 				}
 			}
+			err = errors.Join(err, collectErr, ctx.Err())
 			finish(resolverOutcome(err))
+		} else {
+			// Custom collectors keep the original shared-source contract.
+			tracked, tasksErr := tasks.wait(ctx)
+			discovered, reposErr := repositories.wait(ctx)
+			live, runtimeErr := runtimeState.wait(ctx)
+			err = errors.Join(tasksErr, reposErr, runtimeErr)
+			if ctx.Err() == nil && (err == nil || discovered != nil) {
+				var collectErr error
+				rows, collectErr = l.collectRepos(ctx, tracked, discovered, live, limiter)
+				err = errors.Join(err, collectErr)
+			}
 		}
 		if streaming && err == nil && ctx.Err() == nil {
 			snapshot := repo.Snapshot{Fingerprint: key, ObservedAt: time.Now()}
@@ -287,6 +304,9 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 	})
 	go func() {
 		producers.Wait()
+		// Discovery's candidate callback is also a producer. On cancellation,
+		// wait for it to leave before closing the result stream.
+		<-repositories.ready
 		close(results)
 	}()
 	return tui.LocalLoad{ID: id, Request: request, Results: results}

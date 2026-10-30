@@ -25,6 +25,7 @@ const (
 	listActionToggleWorktrees
 	listActionRepoCreate
 	listActionRepoMetadata
+	listActionRepoFavorite
 	listActionRepoDemote
 	listActionStartWorktree
 	listActionStartDirect
@@ -660,6 +661,8 @@ func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 		return m, runExecProcess(process, func(runErr error) tea.Msg {
 			return actionMsg{status: "repository wizard completed", forceSizes: true, err: runErr}
 		})
+	case listActionRepoFavorite:
+		return m.toggleRepoFavorite()
 	case listActionRepoMetadata:
 		if row, ok := m.currentRepo(); ok {
 			return m.openRepoForm(row)

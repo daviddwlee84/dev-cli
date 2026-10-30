@@ -43,7 +43,7 @@ func actionGuidance(view View, id listAction) (string, string) {
 	case ViewRepos:
 		switch id {
 		case listActionOpen:
-			return "Open the selected checkout", "A repository row opens the main checkout; an expanded worktree row opens that exact checkout. Missing or prunable worktrees cannot be opened."
+			return "Open the selected checkout", "A repository row opens the main checkout; an expanded worktree row opens that exact checkout. Opening validates only the selected target without waiting for unrelated scanning. Missing or prunable worktrees cannot be opened."
 		case listActionToggleWorktrees:
 			return "Expand or collapse worktrees", "For a repository with known linked worktrees, reveal each checkout's Git, runtime and task state. Space on a child collapses its parent."
 		case listActionRepoCreate:
@@ -56,6 +56,8 @@ func actionGuidance(view View, id listAction) (string, string) {
 			return "Add a repository thought", "Attach a durable quick note to the selected canonical repository, including when a linked worktree is selected."
 		case listActionBrowseNotes:
 			return "Browse repository thoughts", "Read, search and manage the selected repository's notes."
+		case listActionRepoFavorite:
+			return "Favorite a repository", "Press f on a repository parent to add or remove a durable local favorite. Favorites stay above other matching repositories and refresh first; this does not create a task or change Git."
 		case listActionRepoMetadata:
 			return "Edit tags and summary", "Edit catalog metadata for a repository main row; this summary is separate from its multiple quick notes."
 		case listActionRepoDemote:

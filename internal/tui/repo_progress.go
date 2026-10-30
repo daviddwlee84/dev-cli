@@ -10,10 +10,17 @@ func mergeRepoProgress(previous, updates []RepoRow) []RepoRow {
 	for _, row := range updates {
 		found := false
 		for i, old := range rows {
-			if old.Repo.Path == row.Repo.Path {
-				if row.Pending == "loading" && old.Pending != "loading" {
+			if old.Repo.Path == row.Repo.Path || sameFavoriteRepository(old.Repo, row.Repo) {
+				if (row.Pending == "loading" && old.Pending != "loading" && old.Pending != "refreshing") ||
+					(row.Pending == "cached" && old.Pending != "cached" && old.Pending != "refreshing") {
+					if row.Asset != nil && (old.Asset == nil || !old.Asset.Updated.After(row.Asset.Updated)) {
+						rows[i].Asset = row.Asset.Clone()
+					}
 					found = true
 					break
+				}
+				if row.Asset == nil && (row.Pending == "loading" || row.Pending == "cached") && sameFavoriteRepository(old.Repo, row.Repo) {
+					row.Asset = old.Asset
 				}
 				if row.TopologyPending && !old.TopologyPending && old.Pending == "" {
 					row.Topology, row.TopologyErr, row.TopologyPending = old.Topology, old.TopologyErr, false
@@ -39,7 +46,11 @@ func (m Model) applyRepoProgress(result LocalResult) (Model, bool) {
 		return m, false
 	}
 	phase := 1
-	if result.Phase != "cache" {
+	if result.Phase == "favorites" {
+		// Provisional intent can precede the cache without making the cache's
+		// other rows obsolete. Per-row merging protects richer observations.
+		phase = max(phase, m.repoProgressPhase)
+	} else if result.Phase != "cache" {
 		phase = 2
 	}
 	if phase < m.repoProgressPhase {
@@ -53,13 +64,13 @@ func (m Model) applyRepoProgress(result LocalResult) (Model, bool) {
 	m.loads[int(ViewRepos)].freshness = perftrace.FreshnessStale
 	m.loads[int(ViewRepos)].actionable = false
 	m.loads[int(ViewRepos)].source = perftrace.SourceLive
-	if phase == 1 {
+	if result.Phase == "cache" {
 		m.loads[int(ViewRepos)].source = perftrace.SourceCache
 	}
 	count := len(m.repos)
 	m.trace.Mark(perftrace.TUIViewSnapshotAccepted, perftrace.Fields{View: perftrace.ViewRepos, Stage: perftrace.StageFirstEnrichment, Source: m.loads[int(ViewRepos)].source, Freshness: perftrace.FreshnessStale, Generation: result.Generation, Rows: &count})
 	message := fmt.Sprintf("Refreshing local repositories… %d visible", count)
-	if phase == 1 && len(result.Repos) > 0 {
+	if result.Phase == "cache" && len(result.Repos) > 0 {
 		message = "Cached " + result.Repos[0].ObservedAt.Local().Format("Jan 2 15:04") + " · " + message
 	}
 	m.setViewStatus(ViewRepos, message)
@@ -98,7 +109,7 @@ func completeRepoRows(previous, rows []RepoRow) []RepoRow {
 	out := make([]RepoRow, 0, len(rows))
 	for _, row := range rows {
 		for _, candidate := range merged {
-			if row.Repo.Path == candidate.Repo.Path {
+			if row.Repo.Path == candidate.Repo.Path || sameFavoriteRepository(row.Repo, candidate.Repo) {
 				out = append(out, candidate)
 				break
 			}

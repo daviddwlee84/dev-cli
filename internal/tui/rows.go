@@ -30,13 +30,15 @@ import (
 // here?" has to come before "what am I working on?"
 // RepoActions groups catalog metadata mutations for ordinary repositories.
 type RepoActions struct {
-	Create func() (*exec.Cmd, error)
-	Patch  func(ctx context.Context, row RepoRow, tags []string, note string) (string, error)
+	Create      func() (*exec.Cmd, error)
+	Patch       func(ctx context.Context, row RepoRow, tags []string, note string) (string, error)
+	SetFavorite func(ctx context.Context, row RepoRow, desired bool) (*catalog.Entry, error)
 }
 
 type RepoRow struct {
 	TopologyPending bool
 	Pending         string
+	Unavailable     string
 	GitKnown        bool
 	ObservedAt      time.Time
 	Repo            repo.Repo
@@ -74,6 +76,9 @@ type RepoRow struct {
 	RemoteForge forge.Kind
 	RemoteName  string
 }
+
+// Favorite is durable catalog intent, independent of observation freshness.
+func (r RepoRow) Favorite() bool { return r.Asset != nil && r.Asset.Favorite }
 
 // Sessions returns every runtime session attached to any checkout in this
 // repository.

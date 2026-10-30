@@ -167,6 +167,7 @@ enter/o   ad-hoc open，不建立 task
 n         透過 clone-aware `repo new` wizard 建立 repository
 a/N       quick-add／瀏覽 repository notes
 space     展開 linked worktrees
+f         切換 repository 主列的 favorite
 m         編輯 repository tags/summary
 d         追蹤目前 branch 的 direct work
 s         啟動 isolated work：branch + worktree + provisioning + runtime
@@ -175,6 +176,24 @@ y         開啟 copy/context actions
 ```
 
 展開後會顯示每個 linked worktree，包括 harness-owned `(ephemeral)` 與未受管理的 `(external)` checkout。LIVE column 將 runtime activity 與 task state 分開。
+
+在 repository 主列按 `f`，或從 action menu 選 **Add favorite / Remove favorite**，
+可切換持久保存在 catalog 的收藏 (favorite)，以 `★` 顯示，不觸發完整重掃。
+一般排序、欄位排序或反向排序後，favorites 仍穩定分組置頂；各組內的順序不變，
+worktree 子列仍跟隨所屬 repository。篩選仍排除不符合查詢的項目。這不新增
+FLEET、TRY 或個別 worktree 的收藏、自動記錄最近使用，或新的 CLI 指令。
+
+目前主機且位於目前 discovery scope 內的 favorites，即使沒有 presentation cache，
+也會先顯示 provisional rows，並優先於一般 enrichment 派送處理；正常 discovery
+仍在背景繼續。目標遺失時維持 unavailable，不清除 favorite。
+
+REPOS 的 cached、loading、refreshing 或 runtime-pending rows 也可按 Enter/`o`
+開啟；操作當下會驗證所選的確切目錄、Git common-directory 身分與子 worktree
+註冊狀態，不必等待全域 inventory 或 runtime listing。Runtime resolution 與
+原生 Herdr handoff 仍可能耗時，非 Git 目錄的開啟仍受支援。導覽不建立 task、
+不啟動 agent，也不 fetch；pending 狀態不會被清除，dirty-state、lifecycle、
+cleanup 與 batch observation guards 均維持原有條件。搜尋時第一次 Enter
+仍只離開輸入，回到清單後再按 Enter 或 `o` 才開啟。
 
 REPOS 為空、篩選後無結果，或所選列尚有 pending observations 時，仍可按 `n`
 或 Ctrl+O → new repository。這個入口不依賴所選列，選單開啟期間該列消失也不會
@@ -421,17 +440,20 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 ## Dashboard 導覽與整理入口
 
 Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 保留兩行主要操作與導覽，另有版本／更新資訊列，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+小寫 `f` 現在保留給 REPOS favorites；原本使用它的自訂工具必須改綁其他可用按鍵，例如大寫 `F`。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](local-triage.md)。
 
 
 ## 載入、選單搜尋與多年活動
 
-REPOS 先讀取附時間的顯示 cache，再逐批加入 discovery 與 Git observations。
-Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供依賴該列
-之操作的授權。New-repo wizard 是獨立入口，仍保留最終 mutation checks。
-完整 discovery 才移除消失項目，失敗保留 stale／unknown。`r` 保持本地 refresh；
-`dev self cache clear repos` 可清除快照，SIZE 沿用其獨立 cache。
+REPOS 讀取附時間的顯示 cache 並先加入 scope 內的 favorites，再逐批發布
+discovery 與 Git observations。Runtime 較慢時，其他 repo 資料仍會出現。
+Enter/`o` 會驗證所選目標，不必等待完整 inventory；pending／cached observations
+仍不能授權 lifecycle、cleanup 或 batch actions。New-repo wizard 是獨立入口，
+仍保留最終 mutation checks。完整 discovery 才移除消失的一般項目；unavailable
+favorites 保留 catalog 偏好。失敗保留 stale／unknown。`r` 保持本地 refresh；
+`dev self cache clear repos` 只清除快照，不移除 favorites；SIZE 沿用其獨立 cache。
 
 Ctrl+O 選單與子選單支援 `/` 篩選、方向鍵及 Enter；Esc 先清除搜尋，再關閉。
 `H` 先顯示 stats，再自動補齊所選 repo 的完整本地 Git 歷史，refs 未變時使用

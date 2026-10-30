@@ -315,7 +315,7 @@ var reservedKeys = map[string]string{
 	"0": "clear filters", "1": "TASKS view", "2": "REPOS view", "3": "FLEET view", "4": "TRY view", "5": "REMOTE view", "6": "SKILLS view", "7": "MCP view",
 	"?": "help", "H": "repo activity heatmap", "e": "edit config",
 	"O": "cycle repo sort", "R": "reverse repo sort",
-	"m": "edit repo metadata", "y": "copy repo metadata",
+	"m": "edit repo metadata", "y": "copy repo metadata", "f": "favorite repository",
 }
 
 // ReservedKey reports the dashboard binding a key would collide with.

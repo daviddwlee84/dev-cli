@@ -483,6 +483,8 @@ type Model struct {
 	statsScroll        int
 	statsRefreshing    bool
 	repoProgressPhase  int
+	repoFavorites      map[string]repoFavoriteOverride
+	repoFavoriteBusy   bool
 	topologyRequested  []string
 	overlay            overlayState
 
@@ -1284,6 +1286,7 @@ func (m Model) visibleTasks() []inventory.Row {
 func (m Model) visibleRepos() []RepoRow {
 	var out []RepoRow
 	for _, r := range m.repos {
+		r = m.withRepoFavorite(r)
 		if r.IsTry() || !r.matches(m.filter) {
 			continue
 		}
@@ -1300,7 +1303,9 @@ func (m Model) visibleRepos() []RepoRow {
 		}
 		return cmp < 0
 	})
-	return applyColumnSort(m, out, repoCell)
+	out = applyColumnSort(m, out, repoCell)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Favorite() && !out[j].Favorite() })
+	return out
 }
 
 // visibleTries applies structured experiment filters and keeps sorting local to
@@ -3073,6 +3078,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
+	case repoFavoriteMsg:
+		return m.applyRepoFavorite(msg)
+
 	case actionMsg:
 		m.statusSeverity = ""
 		if m.remoteClone.active() && (msg.cd != "" || msg.activate != "") {
@@ -3173,7 +3181,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
 		switch msg.String() {
-		case "enter", "o", "s", "d", "m", "a", "y", " ":
+		case "s", "d", "m", "a", "y", " ":
 			m.status = "Waiting for fresh repository observations…"
 			return m, nil
 		}

@@ -406,7 +406,7 @@ func (m Model) repoItemColumnValue(item repoItem, name string) string {
 			if m.repoExpanded(r) {
 				marker = "▾ "
 			}
-			return marker + r.Repo.Display()
+			return marker + favoriteRepoLabel(r)
 		}
 		if name == "live" {
 			return parentLiveColumn(r)
@@ -593,7 +593,7 @@ func repoColumnValue(r RepoRow, name string) string {
 
 	switch name {
 	case "repo":
-		return r.Repo.Display()
+		return favoriteRepoLabel(r)
 	case "branch":
 		if r.Repo.Bare {
 			return "(bare)"
