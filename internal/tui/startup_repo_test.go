@@ -67,11 +67,11 @@ func TestStartupRepoFocusHandlesEitherArrivalOrder(t *testing.T) {
 			if identityFirst {
 				m = startupSend(m, identity)
 			}
-			m = startupSend(m, localMsg{result: LocalResult{View: ViewRepos, Generation: generation, Phase: "cache", Repos: startupRows()[:1], Valid: true}})
+			m = startupSend(m, localMsg{results: []LocalResult{{View: ViewRepos, Generation: generation, Phase: "cache", Repos: startupRows()[:1], Valid: true}}})
 			if m.startupRepo.focusDone {
 				t.Fatal("consumed pending focus before target arrived")
 			}
-			m = startupSend(m, localMsg{result: LocalResult{View: ViewRepos, Generation: generation, Phase: "discovery", Repos: startupRows()[1:], Valid: true}})
+			m = startupSend(m, localMsg{results: []LocalResult{{View: ViewRepos, Generation: generation, Phase: "discovery", Repos: startupRows()[1:], Valid: true}}})
 			if !identityFirst {
 				m = startupSend(m, identity)
 			}
@@ -79,7 +79,7 @@ func TestStartupRepoFocusHandlesEitherArrivalOrder(t *testing.T) {
 			if row.Repo.Name != "beta" {
 				t.Fatal(row.Repo.Name)
 			}
-			m = startupSend(m, localMsg{result: LocalResult{View: ViewRepos, Generation: generation, Repos: startupRows(), Valid: true}})
+			m = startupSend(m, localMsg{results: []LocalResult{{View: ViewRepos, Generation: generation, Repos: startupRows(), Valid: true}}})
 			row, _ = m.currentRepo()
 			if row.Repo.Name != "beta" {
 				t.Fatal("completion lost identity")

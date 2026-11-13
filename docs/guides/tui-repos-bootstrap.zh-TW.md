@@ -459,6 +459,14 @@ Enter/`o` 會驗證所選目標，不必等待完整 inventory；pending／cache
 favorites 保留 catalog 偏好。失敗保留 stale／unknown。`r` 保持本地 refresh；
 `dev self cache clear repos` 只清除快照，不移除 favorites；SIZE 沿用其獨立 cache。
 
+載入串流期間順序保持穩定：cache 或 favorites 畫面決定順序（cached 列已加入
+已記錄的 tasks，並帶上次的 worktree 數與 live runtime 排序提示），之後才
+discover 的 repo 接在後面，完整快照只重排一次，選取跟著原本的 repo。`O`、
+`R`、欄位排序與設定重載會立即重排。提示只用於排序：LIVE 只顯示實際觀察到的
+session，cached／pending 列仍保留 action guards。進度與 size 結果以短批次套用，
+一波 observations 只重繪一次。SIZE 在列有 target 時就顯示上次量測值；超過
+size cache TTL 的舊值標示 `~`，直到載入後的正常量測取代，掃描量與並行度不變。
+
 Ctrl+O 選單與子選單支援 `/` 篩選、方向鍵及 Enter；Esc 先清除搜尋，再關閉。
 `H` 先顯示 stats，再自動補齊所選 repo 的完整本地 Git 歷史，refs 未變時使用
 checkpoint。每年一張圖，由最早年份往下排列，支援滾輪、上下鍵、PgUp/PgDn、

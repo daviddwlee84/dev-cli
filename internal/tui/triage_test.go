@@ -114,17 +114,17 @@ func TestScopedSizesKeepUnrelatedLoadAndRejectOlderMeasurements(t *testing.T) {
 	if m.sizeLoad.ID != 1 {
 		t.Fatal("unrelated initial load canceled")
 	}
-	n, _ = m.updateSize(sizeMsg{loadID: 1, result: diskusage.Result{Key: one.Key, Usage: diskusage.Usage{OwnedBytes: 1}}})
+	n, _ = m.updateSize(sizeMsg{loadID: 1, results: []diskusage.Result{{Key: one.Key, Usage: diskusage.Usage{OwnedBytes: 1}}}})
 	m = n.(Model)
 	if m.repos[0].Usage != nil {
 		t.Fatal("stale affected size accepted")
 	}
-	n, _ = m.updateSize(sizeMsg{loadID: 1, result: diskusage.Result{Key: two.Key, Usage: diskusage.Usage{OwnedBytes: 2}}})
+	n, _ = m.updateSize(sizeMsg{loadID: 1, results: []diskusage.Result{{Key: two.Key, Usage: diskusage.Usage{OwnedBytes: 2}}}})
 	m = n.(Model)
 	if m.repos[1].Usage == nil {
 		t.Fatal("unrelated size discarded")
 	}
-	n, _ = m.updateSize(sizeMsg{loadID: 2, result: diskusage.Result{Key: one.Key, Usage: diskusage.Usage{OwnedBytes: 3}}})
+	n, _ = m.updateSize(sizeMsg{loadID: 2, results: []diskusage.Result{{Key: one.Key, Usage: diskusage.Usage{OwnedBytes: 3}}}})
 	m = n.(Model)
 	if m.repos[0].Usage == nil || m.repos[0].Usage.OwnedBytes != 3 {
 		t.Fatal("fresh scoped size discarded")

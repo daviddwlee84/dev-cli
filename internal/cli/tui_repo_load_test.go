@@ -13,6 +13,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -460,5 +461,61 @@ func TestTUILocalLoaderCancellationDoesNotReplaceCache(t *testing.T) {
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("cancellation replaced cache: %v", err)
+	}
+}
+
+// Cached rows join recorded tasks and derive a size target so the first frame
+// orders hot work correctly and can show cached sizes; the live hint is an
+// ordering hint that enrichment clears.
+func TestTUILocalLoaderCachedRowsCarryTasksSizeTargetAndLiveHint(t *testing.T) {
+	r := gittest.New(t)
+	discovered := loaderDiscoveredRepo(t, r.Root)
+	app := loaderTestApp(t, r.Root)
+	if err := app.Tasks.Save(&task.Task{Repo: discovered.Name, RepoPath: discovered.Path, Branch: "hot-work", Base: "main", Mode: task.ModeDirect, State: task.Hot}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := repo.Snapshot{Fingerprint: repo.SnapshotKey(app.Cfg.DiscoveryRoots(), app.Cfg.StateDir()), ObservedAt: time.Now(),
+		Rows: []repo.CachedRow{{Repo: discovered, Worktrees: 1, Live: true}}}
+	cachePath := filepath.Join(cacheRoot(), "repos-v1.json")
+	if err := repo.WriteSnapshot(cachePath, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	app.Sizes = diskusage.NewManager(diskusage.NewCache("", time.Hour), 1)
+	if err := app.Sizes.Cache.Set(repoSizeTarget(discovered, 1), diskusage.Usage{CheckoutBytes: 7, OwnedBytes: 7, Complete: true, MeasuredAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	loader := &tuiLocalLoader{app: app,
+		loadRuntime: func(context.Context) (tuiRuntimeSnapshot, error) {
+			return tuiRuntimeSnapshot{runtime: runtime.None{}}, nil
+		},
+		collectTries: func(context.Context, bool, tuiRuntimeSnapshot) ([]tui.TryRow, error) { return nil, nil },
+	}
+	load := loader.Start(t.Context(), tui.LocalLoadRequest{ReposGeneration: 1})
+	cached := waitRepoResult(t, load.Results, "cache")
+	if len(cached.Repos) != 1 {
+		t.Fatalf("cache rows = %+v", cached.Repos)
+	}
+	row := cached.Repos[0]
+	if row.Usage == nil || !row.Usage.Cached || row.Usage.OwnedBytes != 7 {
+		t.Fatalf("cached row did not read the size cache: %+v", row.Usage)
+	}
+	if row.HotTasks() != 1 || row.Worktrees != 1 || !row.CachedLive || row.Live || row.SizeTarget.Checkout == "" {
+		t.Fatalf("cached row lacks hints: tasks=%d worktrees=%d cachedLive=%v live=%v size=%q", row.HotTasks(), row.Worktrees, row.CachedLive, row.Live, row.SizeTarget.Checkout)
+	}
+	var complete tui.LocalResult
+	for result := range load.Results {
+		if result.View == tui.ViewRepos && result.Phase == "enrichment" && result.Repos[0].CachedLive {
+			t.Fatal("enrichment carried the cache hint")
+		}
+		if result.View == tui.ViewRepos && result.Phase == "" {
+			complete = result
+		}
+	}
+	if len(complete.Repos) != 1 || complete.Repos[0].CachedLive || complete.Repos[0].HotTasks() != 1 {
+		t.Fatalf("complete snapshot = %+v", complete.Repos)
+	}
+	written, err := repo.ReadSnapshot(t.Context(), cachePath, snapshot.Fingerprint)
+	if err != nil || len(written.Rows) != 1 || written.Rows[0].Live || written.Rows[0].Worktrees != 0 {
+		t.Fatalf("rewritten cache must record the fresh observation (no runtime, no linked worktrees): %+v, %v", written.Rows, err)
 	}
 }

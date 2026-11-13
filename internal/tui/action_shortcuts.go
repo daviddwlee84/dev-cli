@@ -113,6 +113,7 @@ func (m Model) executeDashboardAction(action listAction) (tea.Model, tea.Cmd) {
 			orders := []string{"activity", "latest", "name", "git", "size", "tasks"}
 			m.actions.RepoSort = nextSort(m.actions.RepoSort, orders)
 			m.status = "repo sort: " + m.actions.RepoSort
+			m.freezeRepoOrder()
 		case ViewTries:
 			m.trySort = nextSort(m.trySort, []string{"activity", "name", "phase", "size"})
 			m.status = "Try sort: " + m.trySort
@@ -128,6 +129,7 @@ func (m Model) executeDashboardAction(action listAction) (tea.Model, tea.Cmd) {
 		case ViewRepos:
 			m.actions.RepoReverse = !m.actions.RepoReverse
 			m.status = fmt.Sprintf("repo sort reversed: %v", m.actions.RepoReverse)
+			m.freezeRepoOrder()
 		case ViewTries:
 			m.tryReverse = !m.tryReverse
 			m.status = fmt.Sprintf("Try sort reversed: %v", m.tryReverse)

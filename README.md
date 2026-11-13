@@ -1406,7 +1406,9 @@ sort = "activity"       # activity | latest | name | git | size | tasks
 reverse = false
 ```
 
-In REPOS and TRY, `O` cycles sort and `R` reverses it. Structured filters include
+In REPOS and TRY, `O` cycles sort and `R` reverses it. While REPOS is still
+loading, the order settles once per load: rows keep the cached order until the
+complete snapshot, and sort changes apply immediately. Structured filters include
 `tag:important`, `remote:none`, `size:>1GiB`, `phase:deprecated` and
 `where:archived` where applicable. Local repo probes run with bounded
 parallelism, and the alternate screen appears before they finish.

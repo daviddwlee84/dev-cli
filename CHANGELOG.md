@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- REPOS keeps a stable order while a progressive load streams: the cache or
+  favorites frame fixes the order, later-discovered rows append, and the complete
+  snapshot re-sorts once while the selection follows its repository. Changing
+  sort (`O`, `R`, column sort or a config reload) still re-sorts immediately.
+  Per-repository progress and size results are applied in batches, so one burst
+  of observations re-renders once instead of once per row.
+- The REPOS presentation cache now records each repository's linked-worktree
+  count and a live-runtime ordering hint, and cached rows join recorded tasks on
+  the first frame. Hints only order the list: they are never shown as a live
+  status and never authorize actions; pending/cached rows keep their guards.
+- SIZE shows the last disk-usage measurement as soon as a row has a target,
+  marking an expired value with `~` until the normal post-load measurement
+  replaces it. Scanning volume, concurrency and timing are unchanged.
+
 ## [0.3.4] - 2026-10-31
 
 ### Added

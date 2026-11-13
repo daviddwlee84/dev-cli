@@ -25,7 +25,11 @@ func mergeRepoProgress(previous, updates []RepoRow) []RepoRow {
 				if row.TopologyPending && !old.TopologyPending && old.Pending == "" {
 					row.Topology, row.TopologyErr, row.TopologyPending = old.Topology, old.TopologyErr, false
 				}
-				if row.Usage == nil {
+				sameKey := old.SizeTarget.Key == "" || old.SizeTarget.Key == row.SizeTarget.Key
+				if sameKey && (row.Usage == nil || (row.Usage.Cached && old.Usage != nil && !old.Usage.Cached)) {
+					// A changed target key (worktree count) changes ownership
+					// attribution, so an older measurement must not survive it.
+					// A measurement from this session outranks a cache read.
 					row.Usage, row.SizeError = old.Usage, old.SizeError
 				}
 				rows[i] = row
@@ -60,6 +64,13 @@ func (m Model) applyRepoProgress(result LocalResult) (Model, bool) {
 	token := m.currentToken()
 	path := m.repoFocusPath()
 	m.repos = mergeRepoProgress(m.repos, result.Repos)
+	if phase == 1 || len(m.repoOrder) == 0 {
+		// The cache/favorites presentation fixes the order for the whole load;
+		// without a cache, the first streamed rows fix it instead.
+		m.freezeRepoOrder()
+	} else {
+		m.placeNewRepos()
+	}
 	m.loads[int(ViewRepos)].hasSnapshot = true
 	m.loads[int(ViewRepos)].freshness = perftrace.FreshnessStale
 	m.loads[int(ViewRepos)].actionable = false

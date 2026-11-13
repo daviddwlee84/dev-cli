@@ -14,12 +14,17 @@ import (
 )
 
 // CachedRow holds presentation only: no task, runtime or action authority.
+// Worktrees and Live are ordering hints from the last complete observation.
+// They keep the first frame's order close to the final one; they never
+// render as a live status and never authorize an action.
 type CachedRow struct {
 	Repo         Repo
 	Status       gitx.Status
 	GitKnown     bool
 	LastActivity time.Time
 	Try          bool
+	Worktrees    int  `json:",omitempty"`
+	Live         bool `json:",omitempty"`
 }
 type Snapshot struct {
 	Version     int

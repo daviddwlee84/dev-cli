@@ -483,10 +483,13 @@ type Model struct {
 	statsScroll        int
 	statsRefreshing    bool
 	repoProgressPhase  int
-	repoFavorites      map[string]repoFavoriteOverride
-	repoFavoriteBusy   bool
-	topologyRequested  []string
-	overlay            overlayState
+	// repoOrder is the frozen presentation order (Repo.Path) while a
+	// progressive REPOS load streams; see repoOrderFrozen.
+	repoOrder         []string
+	repoFavorites     map[string]repoFavoriteOverride
+	repoFavoriteBusy  bool
+	topologyRequested []string
+	overlay           overlayState
 
 	notes              []*note.Note
 	noteTarget         NoteTarget
@@ -1284,14 +1287,29 @@ func (m Model) visibleTasks() []inventory.Row {
 // flight to the top — that is what someone opening the dashboard is looking
 // for, not alphabetical order.
 func (m Model) visibleRepos() []RepoRow {
+	out := m.filterRepos(m.filter)
+	if m.repoOrderFrozen() {
+		return m.frozenRepoOrder(out)
+	}
+	return m.sortRepos(out)
+}
+
+// filterRepos applies favorites intent and the text query without ordering.
+func (m Model) filterRepos(query string) []RepoRow {
 	var out []RepoRow
 	for _, r := range m.repos {
 		r = m.withRepoFavorite(r)
-		if r.IsTry() || !r.matches(m.filter) {
+		if r.IsTry() || !r.matches(query) {
 			continue
 		}
 		out = append(out, r)
 	}
+	return out
+}
+
+// sortRepos is the full ordering: configured/cycled sort, column sort, then
+// favorites first.
+func (m Model) sortRepos(out []RepoRow) []RepoRow {
 	sortBy := m.actions.RepoSort
 	if sortBy == "" {
 		sortBy = "activity"
@@ -1304,8 +1322,94 @@ func (m Model) visibleRepos() []RepoRow {
 		return cmp < 0
 	})
 	out = applyColumnSort(m, out, repoCell)
+	return favoritesFirst(out)
+}
+
+func favoritesFirst(out []RepoRow) []RepoRow {
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Favorite() && !out[j].Favorite() })
 	return out
+}
+
+// repoOrderFrozen reports that a progressive REPOS load is streaming and the
+// list keeps the order captured when it first appeared. Sort keys arrive one
+// repository at a time (tasks, Git status, runtime); re-sorting on each would
+// make rows jump under the cursor. The complete snapshot re-sorts once.
+func (m Model) repoOrderFrozen() bool {
+	return m.repoProgressPhase > 0 && m.repoProgressPhase < 3 && len(m.repoOrder) > 0
+}
+
+// frozenRepoOrder ranks rows by the captured order. Favorites still form the
+// first group because that intent is durable, not an observation.
+func (m Model) frozenRepoOrder(out []RepoRow) []RepoRow {
+	rank := make(map[string]int, len(m.repoOrder))
+	for i, path := range m.repoOrder {
+		rank[path] = i
+	}
+	known := len(m.repoOrder)
+	position := func(r RepoRow) int {
+		if i, ok := rank[r.Repo.Path]; ok {
+			return i
+		}
+		return known
+	}
+	sort.SliceStable(out, func(i, j int) bool { return position(out[i]) < position(out[j]) })
+	return favoritesFirst(out)
+}
+
+// freezeRepoOrder captures the current full ordering of every repository row
+// while a progressive load streams. It is a no-op outside streaming phases.
+func (m *Model) freezeRepoOrder() {
+	if m.repoProgressPhase <= 0 || m.repoProgressPhase >= 3 {
+		return
+	}
+	rows := m.sortRepos(m.filterRepos(""))
+	order := make([]string, 0, len(rows))
+	for _, r := range rows {
+		order = append(order, r.Repo.Path)
+	}
+	m.repoOrder = order
+}
+
+// placeNewRepos inserts repositories that arrived after the freeze at the
+// position the current sort gives them against the frozen rows, then keeps
+// them there. Later observations for those rows do not move them either.
+func (m *Model) placeNewRepos() {
+	if !m.repoOrderFrozen() {
+		return
+	}
+	known := make(map[string]bool, len(m.repoOrder))
+	for _, path := range m.repoOrder {
+		known[path] = true
+	}
+	all := m.filterRepos("")
+	for _, candidate := range all {
+		if known[candidate.Repo.Path] {
+			continue
+		}
+		sorted := m.sortRepos(append([]RepoRow(nil), m.frozenRepoOrder(all)...))
+		at := 0
+		for i, r := range sorted {
+			if r.Repo.Path != candidate.Repo.Path {
+				continue
+			}
+			if i == 0 {
+				break
+			}
+			for j, path := range m.repoOrder {
+				if path == sorted[i-1].Repo.Path {
+					at = j + 1
+					break
+				}
+			}
+			break
+		}
+		order := make([]string, 0, len(m.repoOrder)+1)
+		order = append(order, m.repoOrder[:at]...)
+		order = append(order, candidate.Repo.Path)
+		order = append(order, m.repoOrder[at:]...)
+		m.repoOrder = order
+		known[candidate.Repo.Path] = true
+	}
 }
 
 // visibleTries applies structured experiment filters and keeps sorting local to
@@ -1677,7 +1781,7 @@ func compareRepos(a, b RepoRow, sortBy string) int {
 		if c := descInt(a.HotTasks(), b.HotTasks()); c != 0 {
 			return c
 		}
-		if c := descBool(a.Live, b.Live); c != 0 {
+		if c := descBool(liveHint(a), liveHint(b)); c != 0 {
 			return c
 		}
 		if c := descBool(a.Status.Dirty(), b.Status.Dirty()); c != 0 {
@@ -1691,6 +1795,12 @@ func compareRepos(a, b RepoRow, sortBy string) int {
 		}
 	}
 	return nameCmp
+}
+
+// liveHint orders rows only. A cached hint never renders as a live status and
+// never authorizes an action; it keeps the first frame close to the final order.
+func liveHint(r RepoRow) bool {
+	return r.Live || (r.Pending == "cached" && r.CachedLive)
 }
 
 func containsState(list []task.State, s task.State) bool {
@@ -2547,26 +2657,29 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateMouse(msg)
 
 	case localMsg:
+		var commands []tea.Cmd
+		for _, result := range msg.results {
+			var accepted bool
+			m, accepted = m.applyLocalResult(result)
+			if accepted && result.View == ViewRepos && result.Phase == "" {
+				commands = append(commands,
+					m.finishRemoteCloneRefresh(result.Generation, result.Valid, result.Err),
+					m.afterReposResult(result.Valid, result.Err))
+			}
+		}
 		if msg.done {
 			request := msg.load.Request
-			current := m.localGeneration == request.CycleGeneration
-			if !current {
-				return m, nil
+			if m.localGeneration != request.CycleGeneration {
+				return m, batchCommands(commands...)
 			}
 			m.finishLocalLoad()
 			m.finishRemoteCloneStream(request)
 			m.forceSizeReload = false
-			return m.beginSizeLoad(request.ForceSizes)
+			var sizes tea.Cmd
+			m, sizes = m.beginSizeLoad(request.ForceSizes)
+			return m, batchCommands(append([]tea.Cmd{sizes}, commands...)...)
 		}
-		var accepted bool
-		m, accepted = m.applyLocalResult(msg.result)
-		next := waitForLocal(msg.load)
-		if accepted && msg.result.View == ViewRepos && msg.result.Phase == "" {
-			clone := m.finishRemoteCloneRefresh(msg.result.Generation, msg.result.Valid, msg.result.Err)
-			fleet := m.afterReposResult(msg.result.Valid, msg.result.Err)
-			return m, batchCommands(next, clone, fleet)
-		}
-		return m, next
+		return m, batchCommands(append([]tea.Cmd{waitForLocal(msg.load)}, commands...)...)
 
 	case reposMsg:
 		accepted := m.applyViewResult(
@@ -2881,6 +2994,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.actions.RepoColumns = append([]string(nil), msg.update.RepoColumns...)
 		m.actions.RepoSort = msg.update.RepoSort
 		m.actions.RepoReverse = msg.update.RepoReverse
+		m.freezeRepoOrder()
 		if msg.update.FleetBackgroundRefresh != nil {
 			m.setFleetBackgroundRefresh(*msg.update.FleetBackgroundRefresh)
 		}

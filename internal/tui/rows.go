@@ -67,7 +67,11 @@ type RepoRow struct {
 	NoteCount  int
 	LatestNote *note.Note
 	// Live reports a runtime session sitting in this repository.
-	Live          bool
+	Live bool
+	// CachedLive is a presentation-cache ordering hint set only on rows whose
+	// Pending is "cached". It keeps the first frame's order close to the final
+	// one; it is never rendered as a live status and never authorizes actions.
+	CachedLive    bool
 	Runtime       string
 	RuntimeHandle string
 	RuntimeStatus string

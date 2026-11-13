@@ -130,3 +130,49 @@ func TestManagerSurfacesScannerErrors(t *testing.T) {
 }
 
 func pointer(value int64) *int64 { return &value }
+
+func TestManagerLookupReturnsHitsWithoutScanningAndMarksExpiredStale(t *testing.T) {
+	now := time.Now().UTC()
+	cache := diskusage.NewCache("", time.Hour)
+	cache.Clock = func() time.Time { return now }
+	manager := diskusage.NewManager(cache, 1)
+	manager.Scan = func(context.Context, diskusage.Target) (diskusage.Usage, error) {
+		t.Fatal("lookup scanned")
+		return diskusage.Usage{}, nil
+	}
+	fresh, expired, missing := diskusage.Plain("/fresh"), diskusage.Plain("/expired"), diskusage.Plain("/missing")
+	usage := diskusage.Usage{CheckoutBytes: 7, OwnedBytes: 7, TotalBytes: pointer(7), Complete: true, MeasuredAt: now}
+	if err := cache.Set(fresh, usage); err != nil {
+		t.Fatal(err)
+	}
+	old := usage
+	old.MeasuredAt = now.Add(-2 * time.Hour)
+	if err := cache.Set(expired, old); err != nil {
+		t.Fatal(err)
+	}
+	results := manager.Lookup([]diskusage.Target{fresh, fresh, expired, missing})
+	if len(results) != 2 {
+		t.Fatalf("lookup = %+v", results)
+	}
+	byKey := map[string]diskusage.Result{}
+	for _, result := range results {
+		byKey[result.Key] = result
+	}
+	if r := byKey[fresh.Key]; !r.Usage.Cached || r.Usage.Stale {
+		t.Fatalf("fresh hit = %+v", r)
+	}
+	if r := byKey[expired.Key]; !r.Usage.Cached || !r.Usage.Stale || r.Usage.OwnedBytes != 7 {
+		t.Fatalf("expired hit must be returned stale: %+v", r)
+	}
+	if _, ok := byKey[missing.Key]; ok {
+		t.Fatal("missing target reported")
+	}
+	scanned := false
+	manager.Scan = func(context.Context, diskusage.Target) (diskusage.Usage, error) {
+		scanned = true
+		return usage, nil
+	}
+	if _, err := manager.Measure(context.Background(), expired, false); err != nil || !scanned {
+		t.Fatalf("expired entry must still be re-measured by Measure: scanned=%v err=%v", scanned, err)
+	}
+}

@@ -101,6 +101,9 @@ type Usage struct {
 	UnreadableEntries int       `json:"unreadable_entries"`
 	MeasuredAt        time.Time `json:"measured_at"`
 	Cached            bool      `json:"cached"`
+	// Stale marks a cached measurement older than the cache TTL. It is shown
+	// as a retained old value while the next load re-measures the target.
+	Stale bool `json:"stale,omitempty"`
 }
 
 // HumanOwned is the table form. Partial measurements use a lower-bound marker.

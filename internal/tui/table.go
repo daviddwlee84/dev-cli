@@ -100,6 +100,9 @@ func (m Model) cycleTableSort(column string) (tea.Model, tea.Cmd) {
 	} else {
 		m.tableSorts[int(m.view)] = s
 	}
+	if m.view == ViewRepos {
+		m.freezeRepoOrder()
+	}
 	m.statusSeverity = "info"
 	m.status = "Default ordering"
 	if s.column != "" {

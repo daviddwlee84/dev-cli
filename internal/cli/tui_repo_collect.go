@@ -10,6 +10,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/note"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
@@ -31,10 +32,7 @@ func prepareRepoRowCollector(ctx context.Context, app *App, rt runtime.Runtime, 
 			taskInventoryErr = errors.Join(taskInventoryErr, diagnostic)
 		}
 	}
-	byRepo := map[string][]*task.Task{}
-	for _, tracked := range tasks {
-		byRepo[tracked.RepoPath] = append(byRepo[tracked.RepoPath], tracked)
-	}
+	byRepo := tasksByRepoPath(tasks)
 	sessions, runtimeErr := options.Sessions, options.SessionsErr
 	if !options.SessionsSet {
 		sessions, runtimeErr = rt.List(ctx)
@@ -67,10 +65,7 @@ func prepareRepoRowCollector(ctx context.Context, app *App, rt runtime.Runtime, 
 				row.Topology, row.TopologyErr = gitx.RecoveryTopologyOf(ctx, r.Path)
 			}
 		}
-		row.Tasks = append(row.Tasks, byRepo[r.Path]...)
-		if r.RealPath != "" && r.RealPath != r.Path {
-			row.Tasks = append(row.Tasks, byRepo[r.RealPath]...)
-		}
+		row.Tasks = append(row.Tasks, repoTasks(byRepo, r)...)
 		row.Context = inventory.CollectRepoContext(ctx, r, row.Tasks, sessions, rt.Name())
 		row.Context.TaskErr = taskInventoryErr
 		row.Context.RuntimeErr = runtimeErr
@@ -86,14 +81,57 @@ func prepareRepoRowCollector(ctx context.Context, app *App, rt runtime.Runtime, 
 			row.Live, row.Runtime = true, rt.Name()
 			row.RuntimeHandle, row.RuntimeStatus = live[0].Handle, live[0].AgentStatus
 		}
-		if r.HasGit {
-			row.SizeTarget = diskusage.FromGit(gitx.Repo{
-				Root: r.Path, GitDir: r.GitDir, GitCommonDir: r.CommonDir,
-				MainRoot: r.MainRoot, Name: r.Name, Bare: r.Bare,
-			}, row.Worktrees)
-		} else {
-			row.SizeTarget = diskusage.Plain(r.Path)
+		row.SizeTarget = repoSizeTarget(r, row.Worktrees)
+		if row.Usage == nil {
+			row.Usage = cachedRepoUsage(app.Sizes, row.SizeTarget)
 		}
 		return row
 	}, nil
+}
+
+// cachedRepoUsage reads the last measurement (expired ones marked Stale) so a
+// row shows a size at once; it never scans. The normal post-load measurement
+// still replaces expired values. Reading here keeps JSON decoding off the UI
+// loop.
+func cachedRepoUsage(sizes *diskusage.Manager, target diskusage.Target) *diskusage.Usage {
+	if target.Checkout == "" {
+		return nil
+	}
+	for _, result := range sizes.Lookup([]diskusage.Target{target}) {
+		if result.Err == nil {
+			usage := result.Usage
+			return &usage
+		}
+	}
+	return nil
+}
+
+// repoSizeTarget derives the disk-usage target for a repository row. The
+// presentation cache reuses it so cached rows can show cached sizes at once.
+func repoSizeTarget(r repo.Repo, worktrees int) diskusage.Target {
+	if r.HasGit {
+		return diskusage.FromGit(gitx.Repo{
+			Root: r.Path, GitDir: r.GitDir, GitCommonDir: r.CommonDir,
+			MainRoot: r.MainRoot, Name: r.Name, Bare: r.Bare,
+		}, worktrees)
+	}
+	return diskusage.Plain(r.Path)
+}
+
+// tasksByRepoPath groups recorded tasks by their repository path.
+func tasksByRepoPath(tasks []*task.Task) map[string][]*task.Task {
+	byRepo := map[string][]*task.Task{}
+	for _, tracked := range tasks {
+		byRepo[tracked.RepoPath] = append(byRepo[tracked.RepoPath], tracked)
+	}
+	return byRepo
+}
+
+// repoTasks returns the tasks recorded against a repository's path or real path.
+func repoTasks(byRepo map[string][]*task.Task, r repo.Repo) []*task.Task {
+	out := append([]*task.Task(nil), byRepo[r.Path]...)
+	if r.RealPath != "" && r.RealPath != r.Path {
+		out = append(out, byRepo[r.RealPath]...)
+	}
+	return out
 }

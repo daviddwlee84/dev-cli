@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -42,11 +43,20 @@ type LocalActions struct {
 	Start func(context.Context, LocalLoadRequest) LocalLoad
 }
 
+// localMsg carries every result that was already available when the first
+// one arrived, so one Update applies a burst of per-repository progress and the
+// list re-renders once. done reports the closed stream and carries no results.
 type localMsg struct {
-	load   LocalLoad
-	result LocalResult
-	done   bool
+	load    LocalLoad
+	results []LocalResult
+	done    bool
 }
+
+// localBatchWindow bounds how long a wait gathers further results after the
+// first one. Tests set it to zero to drain only what is already buffered.
+var localBatchWindow = 20 * time.Millisecond
+
+const localBatchLimit = 64
 
 func (m Model) startLocalLoad() tea.Cmd {
 	if m.actions.Local.Start == nil {
@@ -70,12 +80,54 @@ func (m Model) startLocalLoad() tea.Cmd {
 
 func waitForLocal(load LocalLoad) tea.Cmd {
 	return func() tea.Msg {
-		result, ok := <-load.Results
-		if !ok {
-			return localMsg{load: load, done: true}
-		}
-		return localMsg{load: load, result: result}
+		msg := drainLocal(load.Results, localBatchWindow, localBatchLimit)
+		msg.load = load
+		return msg
 	}
+}
+
+// drainLocal blocks for the first result, then gathers results that follow
+// within window, up to limit. A message carries results or done, never both.
+func drainLocal(results <-chan LocalResult, window time.Duration, limit int) localMsg {
+	var msg localMsg
+	result, ok := <-results
+	if !ok {
+		msg.done = true
+		return msg
+	}
+	msg.results = append(msg.results, result)
+	var deadline <-chan time.Time
+	if window > 0 {
+		timer := time.NewTimer(window)
+		defer timer.Stop()
+		deadline = timer.C
+	}
+	for len(msg.results) < limit {
+		select {
+		case result, ok = <-results:
+			if !ok {
+				// Report the close on the next wait so a message carries either
+				// results or done, never both.
+				return msg
+			}
+			msg.results = append(msg.results, result)
+			continue
+		default:
+		}
+		if deadline == nil {
+			return msg
+		}
+		select {
+		case result, ok = <-results:
+			if !ok {
+				return msg
+			}
+			msg.results = append(msg.results, result)
+		case <-deadline:
+			return msg
+		}
+	}
+	return msg
 }
 
 func (m Model) applyLocalResult(result LocalResult) (Model, bool) {
@@ -108,6 +160,7 @@ func (m Model) applyLocalResult(result LocalResult) (Model, bool) {
 				m.repos = completeRepoRows(m.repos, result.Repos)
 			}
 			m.repoProgressPhase = 3
+			m.repoOrder = nil
 			m.matchRemoteLocals()
 		}
 	case ViewTries:

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
@@ -18,10 +19,12 @@ type SizeActions struct {
 	Cancel     func(loadID uint64)
 }
 
+// sizeMsg batches the measurements already available when the first arrived,
+// so one Update patches several rows. done reports the closed stream.
 type sizeMsg struct {
-	loadID uint64
-	result diskusage.Result
-	done   bool
+	loadID  uint64
+	results []diskusage.Result
+	done    bool
 }
 
 type sizeOwner struct {
@@ -46,6 +49,12 @@ func (m Model) updateSize(msg sizeMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+	for _, result := range msg.results {
+		if m.sizeOwnedElsewhere(result.Key, msg.loadID) {
+			continue
+		}
+		m.applySizeResult(result)
+	}
 	if msg.done {
 		if index < 0 {
 			m.sizeLoad = diskusage.Load{}
@@ -54,13 +63,16 @@ func (m Model) updateSize(msg sizeMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	return m, waitForSize(load)
+}
+
+func (m Model) sizeOwnedElsewhere(key string, loadID uint64) bool {
 	for _, owner := range m.sizeOwners {
-		if owner.key == msg.result.Key && owner.loadID != msg.loadID {
-			return m, waitForSize(load)
+		if owner.key == key && owner.loadID != loadID {
+			return true
 		}
 	}
-	m.applySizeResult(msg.result)
-	return m, waitForSize(load)
+	return false
 }
 
 func (m *Model) setSizeOwner(key string, id uint64) {
@@ -128,12 +140,51 @@ func (m Model) beginSizeLoad(force bool) (Model, tea.Cmd) {
 
 func waitForSize(load diskusage.Load) tea.Cmd {
 	return func() tea.Msg {
-		result, ok := <-load.Results
-		if !ok {
-			return sizeMsg{loadID: load.ID, done: true}
-		}
-		return sizeMsg{loadID: load.ID, result: result}
+		return drainSize(load.ID, load.Results, localBatchWindow, localBatchLimit)
 	}
+}
+
+// drainSize mirrors drainLocal for disk-usage streams.
+func drainSize(loadID uint64, results <-chan diskusage.Result, window time.Duration, limit int) sizeMsg {
+	msg := sizeMsg{loadID: loadID}
+	result, ok := <-results
+	if !ok {
+		msg.done = true
+		return msg
+	}
+	msg.results = append(msg.results, result)
+	var deadline <-chan time.Time
+	if window > 0 {
+		timer := time.NewTimer(window)
+		defer timer.Stop()
+		deadline = timer.C
+	}
+	for len(msg.results) < limit {
+		select {
+		case result, ok = <-results:
+			if !ok {
+				// Report the close on the next wait so a message carries either
+				// results or done, never both.
+				return msg
+			}
+			msg.results = append(msg.results, result)
+			continue
+		default:
+		}
+		if deadline == nil {
+			return msg
+		}
+		select {
+		case result, ok = <-results:
+			if !ok {
+				return msg
+			}
+			msg.results = append(msg.results, result)
+		case <-deadline:
+			return msg
+		}
+	}
+	return msg
 }
 
 func (m *Model) applySizeResult(result diskusage.Result) {
@@ -207,8 +258,12 @@ func sizeDetailLines(usage *diskusage.Usage, err error, target diskusage.Target)
 	if usage == nil {
 		return []string{fmt.Sprintf("  %s  %s", styleDim.Render("size"), styleDim.Render("measuring…"))}
 	}
+	owned := usage.HumanOwned()
+	if usage.Stale {
+		owned += " (stale; re-measuring)"
+	}
 	lines := []string{
-		fmt.Sprintf("  %s  %s logical owned", styleDim.Render("size"), usage.HumanOwned()),
+		fmt.Sprintf("  %s  %s logical owned", styleDim.Render("size"), owned),
 		fmt.Sprintf("  %s  %s", styleDim.Render("checkout"), humanize.IBytes(uint64(max(usage.CheckoutBytes, 0)))),
 	}
 	if usage.PrivateGitBytes != nil {
@@ -237,6 +292,9 @@ func sizeCell(usage *diskusage.Usage, err error, target diskusage.Target) string
 		value := usage.HumanOwned()
 		if usage.SharedGitBytes != nil {
 			value += "+S"
+		}
+		if usage.Stale {
+			value += "~"
 		}
 		return value
 	}

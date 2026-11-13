@@ -89,6 +89,7 @@ func (m *Model) beginViewLoad(view View, cause loadCause) uint64 {
 	}
 	if view == ViewRepos {
 		m.repoProgressPhase = 0
+		m.repoOrder = nil
 		m.topologyRequested = nil
 		m.repos = append([]RepoRow(nil), m.repos...)
 		for i := range m.repos {

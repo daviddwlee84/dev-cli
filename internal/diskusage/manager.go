@@ -67,6 +67,31 @@ func (m *Manager) Measure(ctx context.Context, target Target, force bool) (Usage
 	return usage, nil
 }
 
+// Lookup returns cache hits for unique targets without scanning, including
+// expired entries marked Stale. It lets a first frame show the last
+// measurement while the real load re-measures expired targets in the
+// background with the same bounded workers as before.
+func (m *Manager) Lookup(targets []Target) []Result {
+	if m == nil || m.Cache == nil {
+		return nil
+	}
+	var out []Result
+	seen := map[string]struct{}{}
+	for _, target := range targets {
+		key := targetKey(target)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		usage, ok, err := m.Cache.GetAny(target)
+		if !ok || err != nil {
+			continue
+		}
+		out = append(out, Result{Key: key, Usage: usage})
+	}
+	return out
+}
+
 // Start streams unique targets through a bounded worker pool.
 func (m *Manager) Start(parent context.Context, targets []Target, force bool) Load {
 	if parent == nil {

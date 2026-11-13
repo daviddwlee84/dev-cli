@@ -531,6 +531,18 @@ Failures retain stale/unknown evidence. `r` remains local refresh;
 `dev self cache clear repos` removes the snapshot, not favorites.
 SIZE retains its separate cache.
 
+Ordering stays stable while a load streams. The cache or favorites frame fixes
+the order (cached rows already join recorded tasks and carry the last
+worktree count and a live-runtime ordering hint), repositories discovered later
+append, and the complete snapshot re-sorts once with the selection following
+its repository. `O`, `R`, column sorting and configuration reloads re-sort
+immediately. The hint only orders rows: LIVE renders observed sessions only,
+and cached or pending rows keep their action guards. Progress and size results
+are applied in short batches, so one burst of observations re-renders once.
+SIZE shows the last measurement as soon as a row has a target; a value older
+than the size cache TTL is marked `~` until the normal post-load measurement
+replaces it, with the same scanning volume and concurrency as before.
+
 Ctrl+O menus and submenus support `/` filtering, arrows and Enter; Escape clears
 search before closing. `H` displays saved stats, then automatically backfills the
 selected repository's full local Git history. Unchanged refs reuse a checkpoint.

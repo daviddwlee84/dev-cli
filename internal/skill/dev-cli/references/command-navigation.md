@@ -48,6 +48,12 @@ even without a presentation cache and priority dispatch before ordinary
 enrichment. Normal discovery continues in the background. Missing targets stay
 unavailable without clearing their favorite.
 
+While a REPOS load streams, row order is frozen from the cache/favorites frame
+and re-sorted once by the complete snapshot; sort changes re-sort immediately.
+Cached rows may carry recorded task counts, a cached size (`~` when older than
+the size cache TTL) and a live-runtime ordering hint. None of these authorize
+actions, and LIVE shows only observed sessions.
+
 Use Enter/`o` on a cached, loading, refreshing or runtime-pending REPOS row to
 validate its exact directory, Git common-directory identity and child worktree
 registration at action time. This does not wait for global inventory or runtime

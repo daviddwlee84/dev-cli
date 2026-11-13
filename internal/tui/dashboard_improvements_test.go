@@ -401,7 +401,7 @@ func TestRepoFilterPreservesChildFocusAcrossProgress(t *testing.T) {
 		if phase == "enrichment" || phase == "" {
 			b.Pending = ""
 		}
-		m = startupSend(m, localMsg{result: LocalResult{View: ViewRepos, Generation: generation, Phase: phase, Repos: []RepoRow{a, b}, Valid: true}})
+		m = startupSend(m, localMsg{results: []LocalResult{{View: ViewRepos, Generation: generation, Phase: phase, Repos: []RepoRow{a, b}, Valid: true}}})
 		if m.currentToken() != selected || m.at() != 2 || m.mode != modeFilter || !m.input.Focused() || m.filter != "match" || m.input.Position() != 2 {
 			t.Fatalf("phase=%q lost child selection or active input: at=%d token=%+v", phase, m.at(), m.currentToken())
 		}

@@ -58,6 +58,30 @@ func (c *Cache) Get(target Target) (Usage, bool, error) {
 	return usage, true, nil
 }
 
+// GetAny returns the cached measurement even after the TTL expired, marking
+// it Stale. Callers show it as a retained old value; Measure still rescans.
+func (c *Cache) GetAny(target Target) (Usage, bool, error) {
+	if c == nil {
+		return Usage{}, false, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.loadLocked(); err != nil {
+		return Usage{}, false, err
+	}
+	usage, ok := c.entries[targetKey(target)]
+	if !ok {
+		return Usage{}, false, nil
+	}
+	if err := usage.Validate(); err != nil {
+		return Usage{}, false, fmt.Errorf("cached disk usage: %w", err)
+	}
+	stale := c.TTL > 0 && c.now().Sub(usage.MeasuredAt) > c.TTL
+	usage = cloneUsage(usage)
+	usage.Cached, usage.Stale = true, stale
+	return usage, true, nil
+}
+
 // Set updates memory. Call Save once after a measurement batch to avoid one
 // filesystem rewrite per row.
 func (c *Cache) Set(target Target, usage Usage) error {

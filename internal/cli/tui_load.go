@@ -226,10 +226,17 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 			finish := appSnapshot.trace.Start(perftrace.TUICacheReposRead, perftrace.Fields{})
 			snapshot, cacheErr := repo.ReadSnapshot(ctx, cachePath, key)
 			finish(resolverOutcome(cacheErr))
+			// Recorded tasks are durable intent from a local TOML read, so cached
+			// rows carry them from the first frame and the initial order already
+			// reflects hot work. Runtime and sizes remain observations.
+			tracked, tasksErr := tasks.wait(ctx)
 			if cacheErr == nil {
+				byRepo := tasksByRepoPath(tracked)
 				cached := make([]tui.RepoRow, 0, len(snapshot.Rows))
 				for _, r := range snapshot.Rows {
-					row := tui.RepoRow{Repo: r.Repo, Status: r.Status, LastActivity: r.LastActivity, ObservedAt: snapshot.ObservedAt, Pending: "cached", GitKnown: r.GitKnown, Asset: metadata.asset(r.Repo)}
+					row := tui.RepoRow{Repo: r.Repo, Status: r.Status, LastActivity: r.LastActivity, ObservedAt: snapshot.ObservedAt, Pending: "cached", GitKnown: r.GitKnown, Asset: metadata.asset(r.Repo),
+						Tasks: repoTasks(byRepo, r.Repo), Worktrees: r.Worktrees, CachedLive: r.Live, SizeTarget: repoSizeTarget(r.Repo, r.Worktrees)}
+					row.Usage = cachedRepoUsage(appSnapshot.Sizes, row.SizeTarget)
 					if r.Try && row.Asset == nil {
 						row.Asset = &catalog.Entry{Kind: catalog.KindTry, Experiment: &catalog.Experiment{Phase: catalog.PhaseActive}}
 					}
@@ -238,7 +245,6 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 				send(tui.LocalResult{View: tui.ViewRepos, Generation: request.ReposGeneration, Repos: cached, Valid: true, Phase: "cache"})
 			}
 			close(presentationReady)
-			tracked, tasksErr := tasks.wait(ctx)
 			err = errors.Join(catalogErr, tasksErr)
 			collectRow := l.collectRepoRow
 			var collectErr error
@@ -281,7 +287,7 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 		if streaming && err == nil && ctx.Err() == nil {
 			snapshot := repo.Snapshot{Fingerprint: key, ObservedAt: time.Now()}
 			for _, r := range rows {
-				snapshot.Rows = append(snapshot.Rows, repo.CachedRow{Repo: r.Repo, Status: r.Status, GitKnown: r.GitKnown, LastActivity: r.LastActivity, Try: r.IsTry()})
+				snapshot.Rows = append(snapshot.Rows, repo.CachedRow{Repo: r.Repo, Status: r.Status, GitKnown: r.GitKnown, LastActivity: r.LastActivity, Try: r.IsTry(), Worktrees: r.Worktrees, Live: r.Live})
 			}
 			_ = repo.WriteSnapshot(cachePath, snapshot)
 		}
