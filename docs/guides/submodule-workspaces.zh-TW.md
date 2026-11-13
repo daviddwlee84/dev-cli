@@ -2,7 +2,7 @@
 description: 初始化完整的 submodule 工作區、選擇任務分支，並由內往外回收子 repository。
 authority: project
 status: evolving
-verified_on: 2026-09-17
+verified_on: 2026-11-13
 tested_with: Git 2.55.0
 lang: zh-TW
 ---
@@ -86,10 +86,59 @@ repo 設定，再優先於全域設定；clone 取得外層後才讀取其 repo 
 `--submodules=none` 略過初始化；`--no-provision` 只略過環境設定，不略過 Git
 初始化。工具不會自動把子 repo 推進到最新 main。
 
+`.gitmodules` 宣告 `update = none` 的子 repo 屬於按需取得：遞迴初始化（clone、
+建立 worktree、`dev git submodule init`）會跟一般 `git submodule update --init`
+一樣保持它未初始化，`status` 也會標示。以 `dev work start --submodule PATH` 或
+`dev git submodule develop PATH` 選中時，才在其 gitlink 初始化。缺席的按需子
+repo 沒有本地內容要發布，因此不阻擋 park 或 completion；該路徑若有檔案，仍屬
+unknown blocker。
+代價是 dev 無法確認這種子 repo 記錄的 gitlink 存在於其遠端；若在沒有本地
+checkout 的情況下改了 gitlink（例如用 `git update-index`），發布前不會被發現。
+
 `dev git submodule init --dry-run` 僅做本地檢查。實際 init 可連線取得缺少的
 checkout，但保留既有 HEAD 與 dirty 內容；未初始化卻非空的目錄會被阻擋。
 初始化失敗會保留部分成果、回傳失敗，並停止 runtime handoff／agent dispatch。
 先重試初始化，再繼續環境設定。
+
+## superproject-workspace 的 child 與 task worktree
+
+`superproject-workspace` agent skill 以另一種方式管理同類 superproject：它從不
+建立外層 repository 的 worktree，而是從 canonical checkout 開啟*子 repo* 的 worktree：
+
+| 種類 | 路徑 |
+|---|---|
+| 單一子 repo | `<worktree-root>/<child-path>/<branch-slug>` |
+| 跨 repo task | `<worktree-root>/_tasks/<task>/<child-path>` |
+
+**一個 task 只用一種模型。** 要嘛使用 dev 的完整外層 worktree（`dev work start
+--submodule PATH`），直接在子 repo 分支上工作，不另開 child worktree；要嘛從
+canonical checkout 以 skill 開啟 child／task worktree。在 dev 外層 worktree 內初始化
+的子 repo，其 Git store 位於 `<super>/.git/worktrees/<id>/modules/<child>`；登記在
+那裡的 child worktree 會在外層 worktree 移除時變成孤兒（`fatal: not a git
+repository`）。skill 拒絕建立這種 worktree；只要它們存在，dev 就阻擋回收。
+
+`<worktree-root>` 預設是 superproject 內的 `.worktrees`，與 dev「managed worktree
+必須在 repository 外」的規則衝突。請針對每個 clone 把它移到 repository 外：
+
+```bash
+git config --local superproject.worktreeRoot ~/Worktrees/my-superproject
+```
+
+納入版本控制的 `.superproject` `[workspace] worktree-root` 套用到所有 clone；
+local 設定優先於它。
+
+dev 依 `.gitmodules` 的 `x-policy` key 或 checkout 根目錄的 `.superproject` 檔案
+偵測此慣例。偵測到時，`dev git submodule status` 會顯示實際的 worktree root（位於
+repository 內時附上提示），並列出每個子 repo 的其他 worktree。位於 root 下的
+worktree 會標示為 superproject-workspace child 或 task worktree，並附上關閉它的
+skill 指令（`task close <task>` 或 `worktree remove <child> <branch>`）。`--json`
+在既有物件上新增 `convention`（`detected`、`sources`、`worktree_root`、
+`worktree_root_source`、`worktree_root_inside_repository`）與 `child_worktrees`
+（`submodule`、`name`、`path`、`branch`、`head`、`store`、`convention_managed`、
+`layout`、`task`、`guidance`）。`store` 為 `canonical` 代表 `<super>/.git/modules/...`，
+`outer-worktree` 代表會隨 linked 外層 worktree 一起刪除的 store。遞迴清理仍會被任何
+額外的 child worktree 阻擋，訊息帶有相同標示與指令。dev 本身不建立、關閉或移除
+這些 worktree。
 
 ## 由內而外整合
 

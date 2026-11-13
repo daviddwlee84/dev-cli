@@ -119,17 +119,19 @@ func Prepare(ctx context.Context, cfg config.Config, root, mode string, develop 
 			s.Init = previous.Init
 		}
 	}
+	if taskStart && develop == nil && s.Init != "none" && r.IsLinkedWorktree && st.Branch != "" {
+		develop = s.Develop
+	}
 	if s.Init == "recursive" {
-		g, err = gitx.InitSubmodules(ctx, root)
+		// Selected members are named explicitly, so an on-demand child
+		// (`update = none`) is initialized only when a task develops it.
+		g, err = gitx.InitSubmodules(ctx, root, develop...)
 		if err != nil {
 			return g, err
 		}
 	}
 	if !r.IsLinkedWorktree || st.Branch == "" {
 		return g, nil
-	}
-	if taskStart && develop == nil && s.Init != "none" {
-		develop = s.Develop
 	}
 	if len(develop) > 0 && s.Init == "none" {
 		return g, errors.New("developing submodules requires recursive initialization")

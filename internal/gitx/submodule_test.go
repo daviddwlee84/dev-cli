@@ -113,3 +113,49 @@ func TestSubmoduleUninitializedNonemptyIsNotParent(t *testing.T) {
 		t.Fatal("populated unknown directory initialized")
 	}
 }
+
+func TestSubmoduleRecursiveInitSkipsUpdateNoneUnlessNamed(t *testing.T) {
+	t.Setenv("GIT_ALLOW_PROTOCOL", "file")
+	core, reference, parent := gittest.New(t), gittest.New(t), gittest.New(t)
+	parent.Git("submodule", "add", core.Root, "core")
+	parent.Git("submodule", "add", reference.Root, "reference")
+	parent.Git("config", "-f", ".gitmodules", "submodule.reference.update", "none")
+	parent.Git("config", "-f", ".gitmodules", "submodule.reference.x-policy", "lazy")
+	parent.Git("add", ".gitmodules")
+	parent.Git("commit", "-m", "test: lazy reference child")
+	linked := filepath.Join(t.TempDir(), "linked")
+	if err := gitx.AddWorktree(t.Context(), parent.Root, linked, "feature", "HEAD"); err != nil {
+		t.Fatal(err)
+	}
+	g, err := gitx.InitSubmodules(t.Context(), linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := map[string]gitx.SubmoduleNode{}
+	for _, n := range g.Nodes {
+		nodes[n.Path] = n
+	}
+	if !nodes["core"].Initialized {
+		t.Fatalf("core not initialized: %+v", nodes["core"])
+	}
+	lazy := nodes["reference"]
+	if lazy.Initialized || lazy.State != "uninitialized" || lazy.Update != "none" || !lazy.SkipsInitialization() {
+		t.Fatalf("update = none child was initialized or misreported: %+v", lazy)
+	}
+	entries, err := os.ReadDir(filepath.Join(linked, "reference"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("update = none child checkout populated: %v", entries)
+	}
+	g, err = gitx.InitSubmodules(t.Context(), linked, "reference")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range g.Nodes {
+		if n.Path == "reference" && (!n.Initialized || n.HEAD != n.Gitlink || !n.Status.Detached) {
+			t.Fatalf("named update = none child not initialized at its gitlink: %+v", n)
+		}
+	}
+}

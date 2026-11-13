@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-24
+verified_on: 2026-11-13
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -50,6 +50,11 @@ Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀�
 版本化紀錄。完整的已初始化子 clone 回收仍要求遠端證明；共享／外部 storage、
 本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。
 `objects/info/alternates` 仍是刻意保留的阻擋條件。
+
+遞迴初始化現在會略過宣告 `update = none` 的子 repo，除非 task 選中它；這種缺席
+的子 repo 不列入發布檢查，因此其 gitlink 不會對照子 repo 的遠端驗證。舊版會強制 checkout。`dev git submodule status --json`
+為 `superproject-workspace` 布局新增 `convention` 與 `child_worktrees`，既有 graph
+key 不變。
 
 移除 linked worktree 仍需 `--recursive`，包含從未初始化或完全空的 gitlink。
 只有子路徑不存在／真正為空、沒有保留的 Git store，且通過所有權／觀測檢查，
