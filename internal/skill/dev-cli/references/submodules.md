@@ -55,10 +55,35 @@ partial results, retry init, and do not launch an agent. `status --json` reports
 the local graph without remote access; parent state never substitutes for child
 state. Workspace-member intent is versioned separately from task TOML.
 
+A `.gitmodules` entry with `update = none` is an on-demand child: recursive
+initialization skips it (status marks it) until `work start --submodule PATH`
+or `develop PATH` names it. An absent on-demand child does not block
+publication or cleanup; a populated directory there is still unknown.
+
 Commit/integrate/push affected children before updating and publishing the
 outer gitlinks. For dotfiles-all, both affected platform gitlinks belong in one
 outer commit. Dev verifies ordering; it does not perform recursive commits,
 pushes or merges. Outer `--push` never implies a child push.
+
+## superproject-workspace child/task worktrees
+
+The `superproject-workspace` skill opens worktrees of the children from the
+canonical checkout (`<root>/<child-path>/<branch-slug>`,
+`<root>/_tasks/<task>/<child-path>`), never of the outer repository. Use one
+model per task: dev's outer worktree with child branches in place, or the
+skill's child/task worktrees, never child worktrees opened from inside a dev
+outer worktree (their store lives under `.git/worktrees/<id>/modules/` and is
+deleted with it). The skill's default root `.worktrees` is inside the repo;
+`git config --local superproject.worktreeRoot <dir outside the repo>` satisfies
+dev's outside-the-repository rule.
+
+dev detects the convention from `x-policy` keys in `.gitmodules` or a
+`.superproject` file. `dev git submodule status [--json]` reports `convention`
+and `child_worktrees` (with `store`, `convention_managed`, `layout`, `task`,
+`guidance`) and labels each with the skill's `task close <task>` or
+`worktree remove <child> <branch>`. Recursive cleanup still blocks on every
+additional child worktree; its blocker names the same command. dev never
+creates, closes or removes these worktrees.
 
 ## Recursive cleanup
 

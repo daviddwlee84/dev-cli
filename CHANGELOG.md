@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev git submodule status` detects the `superproject-workspace` convention
+  (`x-policy` keys in `.gitmodules` or a `.superproject` file), shows its child
+  worktree root with a hint when it lies inside the repository, and lists every
+  additional child worktree. Worktrees in the skill's single-child and
+  `_tasks/<task>/` layouts are labelled with the skill command that closes them.
+  `--json` adds `convention` and `child_worktrees` to the existing object.
+- Recursive cleanup blockers for a child that still owns other worktrees now
+  name each worktree, label convention-managed ones, warn when they live in the
+  outer worktree's store, and point to `task close` / `worktree remove`.
+
+### Fixed
+
+- Recursive submodule initialization no longer initializes children declaring
+  `update = none` in `.gitmodules`; it previously forced a checkout. Selecting
+  such a child with `--submodule` or `dev git submodule develop` initializes it,
+  and an absent on-demand child no longer blocks parking or completion. Its
+  recorded gitlink is then not verified against the child's remote.
+
+### Changed
+
+- The submodule workspace guide and bundled skill explain using one model per
+  task (dev's outer worktree or the skill's child/task worktrees) and document
+  `git config --local superproject.worktreeRoot` for keeping skill worktrees
+  outside the repository.
+
 ## [0.3.5] - 2026-11-13
 
 ### Changed

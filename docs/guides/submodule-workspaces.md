@@ -2,7 +2,7 @@
 description: Initialize complete submodule workspaces, select task branches, and retire child repositories before their parent.
 authority: project
 status: evolving
-verified_on: 2026-09-17
+verified_on: 2026-11-13
 tested_with: Git 2.55.0
 ---
 
@@ -96,11 +96,67 @@ The clone's project settings are read after acquiring the outer repository.
 `--submodules=none` skips initialization. `--no-provision` skips dependency setup,
 not Git initialization. No child is automatically advanced to the latest main.
 
+A child whose `.gitmodules` entry declares `update = none` is on demand:
+recursive initialization (clone, worktree creation, `dev git submodule init`)
+leaves it uninitialized, as plain `git submodule update --init` does, and
+`status` marks it. Selecting it with `dev work start --submodule PATH` or
+`dev git submodule develop PATH` initializes it at its gitlink. An absent
+on-demand child has nothing local to publish, so it does not block parking or
+completion; a populated directory at its path remains an unknown blocker.
+The trade-off: dev cannot check that such a child's recorded gitlink exists on
+its remote, so a gitlink changed without a local checkout (for example with
+`git update-index`) is not caught before publication.
+
 `dev git submodule init --dry-run` inspects locally. Without `--dry-run`, it fills
 missing checkouts and may contact their configured sources. It preserves existing
 checkout HEADs and dirty content; a nonempty uninitialized directory is blocked.
 Initialization failure retains partial results, reports a failure, and prevents
 runtime handoff/agent dispatch. Retry initialization before continuing setup.
+
+## Superproject-workspace child and task worktrees
+
+The `superproject-workspace` agent skill manages the same kind of superproject
+differently: it never opens a worktree of the outer repository, and opens
+worktrees *of the children* from the canonical checkout instead:
+
+| Kind | Path |
+|---|---|
+| Single child | `<worktree-root>/<child-path>/<branch-slug>` |
+| Cross-repo task | `<worktree-root>/_tasks/<task>/<child-path>` |
+
+**Use one model per task.** Either use dev's full outer worktree (`dev work
+start --submodule PATH`) and work on the child branch in place, without extra
+child worktrees, or open child/task worktrees with the skill from the canonical
+checkout. A child initialized inside a dev outer worktree keeps its Git store
+under `<super>/.git/worktrees/<id>/modules/<child>`; child worktrees registered
+there are orphaned (`fatal: not a git repository`) when the outer worktree is
+removed. The skill refuses to create them; dev blocks retirement while they exist.
+
+`<worktree-root>` defaults to `.worktrees` inside the superproject, which
+contradicts dev's rule that managed worktrees stay outside repositories. Move
+it per clone, outside the repository:
+
+```bash
+git config --local superproject.worktreeRoot ~/Worktrees/my-superproject
+```
+
+A tracked `.superproject` `[workspace] worktree-root` applies to every clone;
+the local setting wins over it.
+
+dev detects the convention from `x-policy` keys in `.gitmodules` or a
+`.superproject` file at the checkout root. `dev git submodule status` then
+prints the effective worktree root (and a hint when it is inside the
+repository) and lists every additional worktree of each child. Worktrees under
+the root are labelled as superproject-workspace child or task worktrees, with
+the skill command that closes them (`task close <task>` or `worktree remove
+<child> <branch>`). `--json` adds `convention` (`detected`, `sources`,
+`worktree_root`, `worktree_root_source`, `worktree_root_inside_repository`) and
+`child_worktrees` (`submodule`, `name`, `path`, `branch`, `head`, `store`,
+`convention_managed`, `layout`, `task`, `guidance`) to the existing object.
+`store` is `canonical` for `<super>/.git/modules/...` or `outer-worktree` for
+a store that dies with a linked outer worktree. Recursive cleanup still blocks
+on any additional child worktree, and its message carries the same label and
+command. dev never creates, closes or removes these worktrees itself.
 
 ## Integrate from the inside out
 

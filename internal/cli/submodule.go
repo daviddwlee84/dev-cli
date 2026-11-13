@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -45,10 +46,22 @@ func newSubmoduleCmd(app *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		convention, worktrees, observeErr := submodule.ChildWorktrees(ctxOf(), g)
 		if jsonOut {
-			return json.NewEncoder(app.Out).Encode(g)
+			out := submoduleStatusJSON{SubmoduleGraph: g, ChildWorktrees: worktrees}
+			if convention.Detected {
+				out.Convention = &convention
+			}
+			if err := json.NewEncoder(app.Out).Encode(out); err != nil {
+				return err
+			}
+			return observeErr
 		}
-		renderSubmodules(app, g.Nodes)
+		renderSubmoduleConvention(app, g.Root, convention)
+		renderSubmodulesWithWorktrees(app, g.Nodes, worktrees)
+		if observeErr != nil {
+			return fmt.Errorf("child worktree observation incomplete: %w", observeErr)
+		}
 		return nil
 	}}
 	status.Flags().BoolVar(&jsonOut, "json", false, "emit the submodule graph as JSON")
@@ -121,7 +134,32 @@ func newSubmoduleCmd(app *App) *cobra.Command {
 	return cmd
 }
 
+// submoduleStatusJSON adds fields to the graph object; existing keys are kept.
+type submoduleStatusJSON struct {
+	gitx.SubmoduleGraph
+	Convention     *submodule.Convention     `json:"convention,omitempty"`
+	ChildWorktrees []submodule.ChildWorktree `json:"child_worktrees,omitempty"`
+}
+
+func renderSubmoduleConvention(app *App, root string, c submodule.Convention) {
+	if !c.Detected {
+		return
+	}
+	where := c.WorktreeRoot
+	if rel, err := filepath.Rel(root, c.WorktreeRoot); err == nil && c.WorktreeRootInside {
+		where = filepath.ToSlash(rel)
+	}
+	fmt.Fprintf(app.Out, "%s convention (%s); child worktree root %s [%s]\n", submodule.ConventionName, strings.Join(c.Sources, ", "), where, c.WorktreeRootSource)
+	if c.WorktreeRootInside {
+		fmt.Fprintln(app.Out, "  root is inside the repository; `git config --local superproject.worktreeRoot <dir outside the repo>` keeps child worktrees outside it")
+	}
+}
+
 func renderSubmodules(app *App, nodes []gitx.SubmoduleNode) {
+	renderSubmodulesWithWorktrees(app, nodes, nil)
+}
+
+func renderSubmodulesWithWorktrees(app *App, nodes []gitx.SubmoduleNode, worktrees []submodule.ChildWorktree) {
 	depths := map[string]int{"": -1}
 	for _, n := range nodes {
 		depth := depths[n.Parent] + 1
@@ -134,10 +172,23 @@ func renderSubmodules(app *App, nodes []gitx.SubmoduleNode) {
 			}
 			state = branch + " @ " + n.HEAD[:min(12, len(n.HEAD))]
 		}
+		if n.SkipsInitialization() && n.State == "uninitialized" {
+			state += " (update = none: initialized only when developed)"
+		}
 		fmt.Fprintf(app.Out, "%s  submodule %-28s %s", strings.Repeat("  ", depth), n.Path, state)
 		if len(n.Blockers) > 0 {
 			fmt.Fprintf(app.Out, " · %s", strings.Join(n.Blockers, "; "))
 		}
 		fmt.Fprintln(app.Out)
+		for _, w := range worktrees {
+			if w.Submodule != n.Path {
+				continue
+			}
+			branch := w.Branch
+			if branch == "" {
+				branch = "detached"
+			}
+			fmt.Fprintf(app.Out, "%s    worktree %s [%s]\n", strings.Repeat("  ", depth), w.Label(), branch)
+		}
 	}
 }

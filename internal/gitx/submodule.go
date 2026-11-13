@@ -25,6 +25,7 @@ type SubmoduleNode struct {
 	Name             string   `json:"name"`
 	URL              string   `json:"-"`
 	Gitlink          string   `json:"gitlink"`
+	Update           string   `json:"update,omitempty"` // indexed .gitmodules strategy; "none" is on demand
 	HEAD             string   `json:"head,omitempty"`
 	Branch           string   `json:"branch,omitempty"`
 	GitDir           string   `json:"git_dir,omitempty"`
@@ -84,7 +85,7 @@ func SubmodulesOf(ctx context.Context, dir string) (SubmoduleGraph, error) {
 			if err != nil {
 				return fmt.Errorf("submodule %s: %w", rel, err)
 			}
-			n := SubmoduleNode{Path: rel, Parent: parent, Name: entry.Name, URL: entry.URL, Gitlink: entry.Gitlink, State: "uninitialized"}
+			n := SubmoduleNode{Path: rel, Parent: parent, Name: entry.Name, URL: entry.URL, Gitlink: entry.Gitlink, Update: entry.Update, State: "uninitialized"}
 			info, statErr := os.Lstat(child)
 			if statErr != nil && !os.IsNotExist(statErr) {
 				return gError(rel, statErr)
@@ -237,11 +238,11 @@ func submoduleEntries(ctx context.Context, dir string) ([]SubmoduleNode, error) 
 	}
 	// Read the indexed .gitmodules, not a mutable working file or inherited
 	// global configuration. Names and paths are NUL-safe.
-	modules, err := run(ctx, dir, "config", "--null", "--blob", ":.gitmodules", "--get-regexp", `^submodule\..*\.(path|url)$`)
+	modules, err := run(ctx, dir, "config", "--null", "--blob", ":.gitmodules", "--get-regexp", `^submodule\..*\.(path|url|update)$`)
 	if err != nil {
 		return nil, fmt.Errorf("read indexed .gitmodules: %w", err)
 	}
-	paths, urls := map[string]string{}, map[string]string{}
+	paths, urls, updates := map[string]string{}, map[string]string{}, map[string]string{}
 	for _, record := range nulLines(modules) {
 		key, value, ok := strings.Cut(record, "\n")
 		if !ok {
@@ -253,6 +254,9 @@ func submoduleEntries(ctx context.Context, dir string) ([]SubmoduleNode, error) 
 		if strings.HasSuffix(key, ".url") {
 			urls[strings.TrimSuffix(strings.TrimPrefix(key, "submodule."), ".url")] = value
 		}
+		if strings.HasSuffix(key, ".update") {
+			updates[strings.TrimSuffix(strings.TrimPrefix(key, "submodule."), ".update")] = value
+		}
 	}
 	for i := range entries {
 		matches := 0
@@ -261,6 +265,7 @@ func submoduleEntries(ctx context.Context, dir string) ([]SubmoduleNode, error) 
 				matches++
 				entries[i].Name = name
 				entries[i].URL = urls[name]
+				entries[i].Update = updates[name]
 			}
 		}
 		if matches != 1 || entries[i].URL == "" {
@@ -271,10 +276,23 @@ func submoduleEntries(ctx context.Context, dir string) ([]SubmoduleNode, error) 
 	return entries, nil
 }
 
+// SkipsInitialization reports whether recursive initialization leaves this
+// uninitialized child alone: its .gitmodules entry declares `update = none`,
+// the on-demand convention plain `git submodule update --init` also honors.
+func (n SubmoduleNode) SkipsInitialization() bool {
+	return !n.Initialized && n.Update == "none"
+}
+
 // InitSubmodules only materializes missing checkouts. Existing content/HEADs
 // are never reset. Each level uses command-scoped configuration so shared
-// superproject config is not rewritten by submodule init.
-func InitSubmodules(ctx context.Context, dir string) (SubmoduleGraph, error) {
+// superproject config is not rewritten by submodule init. Children declaring
+// `update = none` are skipped unless their exact graph path is named in
+// include; a named child is initialized at its gitlink like any other.
+func InitSubmodules(ctx context.Context, dir string, include ...string) (SubmoduleGraph, error) {
+	named := map[string]bool{}
+	for _, p := range include {
+		named[p] = true
+	}
 	for {
 		g, err := SubmodulesOf(ctx, dir)
 		if err != nil {
@@ -283,6 +301,9 @@ func InitSubmodules(ctx context.Context, dir string) (SubmoduleGraph, error) {
 		changed := false
 		for _, n := range g.Nodes {
 			if n.Initialized {
+				continue
+			}
+			if n.SkipsInitialization() && n.State == "uninitialized" && !named[n.Path] {
 				continue
 			}
 			if n.State != "uninitialized" {

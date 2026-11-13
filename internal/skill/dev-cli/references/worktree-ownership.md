@@ -1,6 +1,6 @@
 # Worktree ownership
 
-For ordinary clone/worktree acquisition, submodule initialization is core Git acquisition, before provisioning/runtime, and defaults to recursive pinned checkouts. `--no-provision` does not skip it; `--submodules=none` does. Gitlink children are independent submodule clones, not nested managed linked worktrees. Read `submodules.md` for selection and explicit disposal rules.
+For ordinary clone/worktree acquisition, submodule initialization is core Git acquisition, before provisioning/runtime, and defaults to recursive pinned checkouts. `--no-provision` does not skip it; `--submodules=none` does. Gitlink children are independent submodule clones, not nested managed linked worktrees. Read `submodules.md` for selection and explicit disposal rules. Recursive initialization skips children declaring `update = none` unless selected. The `superproject-workspace` skill's in-repo `.worktrees` root conflicts with the outside-the-repository rule; `git config --local superproject.worktreeRoot <dir outside the repo>` moves it.
 
 Read this before creating a worktree, sharing a checkout between agents, or when
 a new checkout lacks dependencies, env files, or launcher backend state.

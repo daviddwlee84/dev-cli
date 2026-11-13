@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-24
+verified_on: 2026-11-13
 tested_with: Claude Code 2.1.259
 ---
 
@@ -57,6 +57,13 @@ remain readable; member intent has its own versioned record. Full initialized
 child-clone disposal still requires remote proofs and rejects shared/external
 storage, local-only data and unsupported filtered/private metadata.
 `objects/info/alternates` remains an intentional blocker.
+
+Recursive initialization now skips children declaring `update = none` unless a
+task selects them; such an absent child is not counted for publication, so its
+gitlink is not verified against the child's remote. Earlier
+releases forced their checkout. `dev git submodule status --json` adds
+`convention` and `child_worktrees` for the `superproject-workspace` layout; the
+existing graph keys are unchanged.
 
 Linked-worktree removal still needs `--recursive`, including for never-initialized
 or fully empty gitlinks. An absent/truly empty child path with no retained Git

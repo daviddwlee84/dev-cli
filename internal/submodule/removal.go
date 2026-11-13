@@ -68,12 +68,20 @@ func InspectPublication(ctx context.Context, cfg config.Config, root string, mer
 	if err != nil {
 		return nil, err
 	}
+	var initialized []gitx.SubmoduleNode
 	for _, n := range g.Nodes {
+		// An on-demand child (`update = none`) that recursive initialization
+		// deliberately left absent has no local refs or content to publish.
+		// A populated directory there is "unknown", not this case.
+		if n.SkipsInitialization() && n.State == "uninitialized" && len(n.Blockers) == 0 {
+			continue
+		}
 		if !n.Initialized || n.Status.Dirty() || n.HEAD != n.Gitlink {
 			return nil, fmt.Errorf("submodule %s must be committed and match its gitlink before publishing/integrating the parent", n.Path)
 		}
+		initialized = append(initialized, n)
 	}
-	return &Removal{Graph: g, Repository: r, Workspace: w, Revision: revision, Config: cfg, Merged: merged, remoteRefs: map[string]string{}, initialized: append([]gitx.SubmoduleNode(nil), g.Nodes...), observed: true, publication: true}, nil
+	return &Removal{Graph: g, Repository: r, Workspace: w, Revision: revision, Config: cfg, Merged: merged, remoteRefs: map[string]string{}, initialized: initialized, observed: true, publication: true}, nil
 }
 
 // InspectRemoval is local only. Destructive adapters must call it even when
@@ -147,6 +155,9 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 			return nil, err
 		}
 		if len(worktrees) != 1 {
+			if detail := DescribeChildWorktrees(ctx, g, n); detail != "" {
+				return nil, fmt.Errorf("submodule %s still owns other worktrees: %s", n.Path, detail)
+			}
 			return nil, fmt.Errorf("submodule %s still owns other worktrees", n.Path)
 		}
 		if err := inspectPrivateState(ctx, child, n.GitDir); err != nil {

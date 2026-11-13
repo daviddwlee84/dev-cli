@@ -18,7 +18,7 @@ and REPOS's guarded action adapter. See [the v0.3 migration guide](cli-v0.3.md).
 A demote plan is current authority only after apply-time revalidation; retained
 graduation history and cached runtime observations cannot authorize a move.
 
-Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](../guides/submodule-workspaces.md), checked against Git 2.55.0 on 2026-09-06.
+Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](../guides/submodule-workspaces.md), checked against Git 2.55.0 on 2026-09-06. The `superproject-workspace` interoperation (convention detection, child/task worktree labels, `update = none` skipping) is defined by `internal/submodule/convention.go` and its tests against the skill's 0.3.0 layout, `superproject.worktreeRoot` and `.superproject` keys, reviewed on 2026-11-13.
 
 This site mixes product documentation, external specifications, fast-moving harness behavior, project policy, and history. Every page identifies which kind of statement it contains and when it was checked.
 

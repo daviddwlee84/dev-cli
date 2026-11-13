@@ -1789,11 +1789,67 @@ The clone's project settings are read after acquiring the outer repository.
 `--submodules=none` skips initialization. `--no-provision` skips dependency setup,
 not Git initialization. No child is automatically advanced to the latest main.
 
+A child whose `.gitmodules` entry declares `update = none` is on demand:
+recursive initialization (clone, worktree creation, `dev git submodule init`)
+leaves it uninitialized, as plain `git submodule update --init` does, and
+`status` marks it. Selecting it with `dev work start --submodule PATH` or
+`dev git submodule develop PATH` initializes it at its gitlink. An absent
+on-demand child has nothing local to publish, so it does not block parking or
+completion; a populated directory at its path remains an unknown blocker.
+The trade-off: dev cannot check that such a child's recorded gitlink exists on
+its remote, so a gitlink changed without a local checkout (for example with
+`git update-index`) is not caught before publication.
+
 `dev git submodule init --dry-run` inspects locally. Without `--dry-run`, it fills
 missing checkouts and may contact their configured sources. It preserves existing
 checkout HEADs and dirty content; a nonempty uninitialized directory is blocked.
 Initialization failure retains partial results, reports a failure, and prevents
 runtime handoff/agent dispatch. Retry initialization before continuing setup.
+
+## Superproject-workspace child and task worktrees
+
+The `superproject-workspace` agent skill manages the same kind of superproject
+differently: it never opens a worktree of the outer repository, and opens
+worktrees *of the children* from the canonical checkout instead:
+
+| Kind | Path |
+|---|---|
+| Single child | `<worktree-root>/<child-path>/<branch-slug>` |
+| Cross-repo task | `<worktree-root>/_tasks/<task>/<child-path>` |
+
+**Use one model per task.** Either use dev's full outer worktree (`dev work
+start --submodule PATH`) and work on the child branch in place, without extra
+child worktrees, or open child/task worktrees with the skill from the canonical
+checkout. A child initialized inside a dev outer worktree keeps its Git store
+under `<super>/.git/worktrees/<id>/modules/<child>`; child worktrees registered
+there are orphaned (`fatal: not a git repository`) when the outer worktree is
+removed. The skill refuses to create them; dev blocks retirement while they exist.
+
+`<worktree-root>` defaults to `.worktrees` inside the superproject, which
+contradicts dev's rule that managed worktrees stay outside repositories. Move
+it per clone, outside the repository:
+
+```bash
+git config --local superproject.worktreeRoot ~/Worktrees/my-superproject
+```
+
+A tracked `.superproject` `[workspace] worktree-root` applies to every clone;
+the local setting wins over it.
+
+dev detects the convention from `x-policy` keys in `.gitmodules` or a
+`.superproject` file at the checkout root. `dev git submodule status` then
+prints the effective worktree root (and a hint when it is inside the
+repository) and lists every additional worktree of each child. Worktrees under
+the root are labelled as superproject-workspace child or task worktrees, with
+the skill command that closes them (`task close <task>` or `worktree remove
+<child> <branch>`). `--json` adds `convention` (`detected`, `sources`,
+`worktree_root`, `worktree_root_source`, `worktree_root_inside_repository`) and
+`child_worktrees` (`submodule`, `name`, `path`, `branch`, `head`, `store`,
+`convention_managed`, `layout`, `task`, `guidance`) to the existing object.
+`store` is `canonical` for `<super>/.git/modules/...` or `outer-worktree` for
+a store that dies with a linked outer worktree. Recursive cleanup still blocks
+on any additional child worktree, and its message carries the same label and
+command. dev never creates, closes or removes these worktrees itself.
 
 ## Integrate from the inside out
 
@@ -12643,6 +12699,13 @@ child-clone disposal still requires remote proofs and rejects shared/external
 storage, local-only data and unsupported filtered/private metadata.
 `objects/info/alternates` remains an intentional blocker.
 
+Recursive initialization now skips children declaring `update = none` unless a
+task selects them; such an absent child is not counted for publication, so its
+gitlink is not verified against the child's remote. Earlier
+releases forced their checkout. `dev git submodule status --json` adds
+`convention` and `child_worktrees` for the `superproject-workspace` layout; the
+existing graph keys are unchanged.
+
 Linked-worktree removal still needs `--recursive`, including for never-initialized
 or fully empty gitlinks. An absent/truly empty child path with no retained Git
 store and no ownership/observation blockers can be proved empty locally, without
@@ -13715,7 +13778,7 @@ and REPOS's guarded action adapter. See [the v0.3 migration guide](https://david
 A demote plan is current authority only after apply-time revalidation; retained
 graduation history and cached runtime observations cannot authorize a move.
 
-Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/), checked against Git 2.55.0 on 2026-09-06.
+Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/), checked against Git 2.55.0 on 2026-09-06. The `superproject-workspace` interoperation (convention detection, child/task worktree labels, `update = none` skipping) is defined by `internal/submodule/convention.go` and its tests against the skill's 0.3.0 layout, `superproject.worktreeRoot` and `.superproject` keys, reviewed on 2026-11-13.
 
 This site mixes product documentation, external specifications, fast-moving harness behavior, project policy, and history. Every page identifies which kind of statement it contains and when it was checked.
 
@@ -16194,10 +16257,59 @@ repo 設定，再優先於全域設定；clone 取得外層後才讀取其 repo 
 `--submodules=none` 略過初始化；`--no-provision` 只略過環境設定，不略過 Git
 初始化。工具不會自動把子 repo 推進到最新 main。
 
+`.gitmodules` 宣告 `update = none` 的子 repo 屬於按需取得：遞迴初始化（clone、
+建立 worktree、`dev git submodule init`）會跟一般 `git submodule update --init`
+一樣保持它未初始化，`status` 也會標示。以 `dev work start --submodule PATH` 或
+`dev git submodule develop PATH` 選中時，才在其 gitlink 初始化。缺席的按需子
+repo 沒有本地內容要發布，因此不阻擋 park 或 completion；該路徑若有檔案，仍屬
+unknown blocker。
+代價是 dev 無法確認這種子 repo 記錄的 gitlink 存在於其遠端；若在沒有本地
+checkout 的情況下改了 gitlink（例如用 `git update-index`），發布前不會被發現。
+
 `dev git submodule init --dry-run` 僅做本地檢查。實際 init 可連線取得缺少的
 checkout，但保留既有 HEAD 與 dirty 內容；未初始化卻非空的目錄會被阻擋。
 初始化失敗會保留部分成果、回傳失敗，並停止 runtime handoff／agent dispatch。
 先重試初始化，再繼續環境設定。
+
+## superproject-workspace 的 child 與 task worktree
+
+`superproject-workspace` agent skill 以另一種方式管理同類 superproject：它從不
+建立外層 repository 的 worktree，而是從 canonical checkout 開啟*子 repo* 的 worktree：
+
+| 種類 | 路徑 |
+|---|---|
+| 單一子 repo | `<worktree-root>/<child-path>/<branch-slug>` |
+| 跨 repo task | `<worktree-root>/_tasks/<task>/<child-path>` |
+
+**一個 task 只用一種模型。** 要嘛使用 dev 的完整外層 worktree（`dev work start
+--submodule PATH`），直接在子 repo 分支上工作，不另開 child worktree；要嘛從
+canonical checkout 以 skill 開啟 child／task worktree。在 dev 外層 worktree 內初始化
+的子 repo，其 Git store 位於 `<super>/.git/worktrees/<id>/modules/<child>`；登記在
+那裡的 child worktree 會在外層 worktree 移除時變成孤兒（`fatal: not a git
+repository`）。skill 拒絕建立這種 worktree；只要它們存在，dev 就阻擋回收。
+
+`<worktree-root>` 預設是 superproject 內的 `.worktrees`，與 dev「managed worktree
+必須在 repository 外」的規則衝突。請針對每個 clone 把它移到 repository 外：
+
+```bash
+git config --local superproject.worktreeRoot ~/Worktrees/my-superproject
+```
+
+納入版本控制的 `.superproject` `[workspace] worktree-root` 套用到所有 clone；
+local 設定優先於它。
+
+dev 依 `.gitmodules` 的 `x-policy` key 或 checkout 根目錄的 `.superproject` 檔案
+偵測此慣例。偵測到時，`dev git submodule status` 會顯示實際的 worktree root（位於
+repository 內時附上提示），並列出每個子 repo 的其他 worktree。位於 root 下的
+worktree 會標示為 superproject-workspace child 或 task worktree，並附上關閉它的
+skill 指令（`task close <task>` 或 `worktree remove <child> <branch>`）。`--json`
+在既有物件上新增 `convention`（`detected`、`sources`、`worktree_root`、
+`worktree_root_source`、`worktree_root_inside_repository`）與 `child_worktrees`
+（`submodule`、`name`、`path`、`branch`、`head`、`store`、`convention_managed`、
+`layout`、`task`、`guidance`）。`store` 為 `canonical` 代表 `<super>/.git/modules/...`，
+`outer-worktree` 代表會隨 linked 外層 worktree 一起刪除的 store。遞迴清理仍會被任何
+額外的 child worktree 阻擋，訊息帶有相同標示與指令。dev 本身不建立、關閉或移除
+這些 worktree。
 
 ## 由內而外整合
 
@@ -26263,6 +26375,11 @@ Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀�
 本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。
 `objects/info/alternates` 仍是刻意保留的阻擋條件。
 
+遞迴初始化現在會略過宣告 `update = none` 的子 repo，除非 task 選中它；這種缺席
+的子 repo 不列入發布檢查，因此其 gitlink 不會對照子 repo 的遠端驗證。舊版會強制 checkout。`dev git submodule status --json`
+為 `superproject-workspace` 布局新增 `convention` 與 `child_worktrees`，既有 graph
+key 不變。
+
 移除 linked worktree 仍需 `--recursive`，包含從未初始化或完全空的 gitlink。
 只有子路徑不存在／真正為空、沒有保留的 Git store，且通過所有權／觀測檢查，
 才可由本地證明為空，不必僅為移除而初始化、下載、取得遠端證明或 push。
@@ -27196,7 +27313,7 @@ service 為準；唯讀 legacy fallback 不遷移紀錄。見
 才具有目前權限；保留的 graduation history 或 cached runtime observations
 不能自行授權搬移。
 
-Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫存恢復，以 `internal/gitx/submodule*`、`internal/submodule`、taskflow／CLI tests 及 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/) 為準；2026-09-06 以 Git 2.55.0 核對。
+Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫存恢復，以 `internal/gitx/submodule*`、`internal/submodule`、taskflow／CLI tests 及 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/) 為準；2026-09-06 以 Git 2.55.0 核對。`superproject-workspace` 互通（慣例偵測、child／task worktree 標示、略過 `update = none`）以 `internal/submodule/convention.go` 及其 tests 為準，依 skill 0.3.0 的布局、`superproject.worktreeRoot` 與 `.superproject` key，2026-11-13 審閱。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
