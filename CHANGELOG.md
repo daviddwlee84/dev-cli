@@ -6,10 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-11-13
+
 ### Changed
 
 - REPOS keeps a stable order while a progressive load streams: the cache or
-  favorites frame fixes the order, later-discovered rows append, and the complete
+  favorites frame fixes the order, later-discovered rows take their sorted slot
+  and stay there, and the complete
   snapshot re-sorts once while the selection follows its repository. Changing
   sort (`O`, `R`, column sort or a config reload) still re-sorts immediately.
   Per-repository progress and size results are applied in batches, so one burst
@@ -1552,7 +1555,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.1...v0.3.2
