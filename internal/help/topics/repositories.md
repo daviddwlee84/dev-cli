@@ -232,6 +232,9 @@ explicitly declared their exact relative directory disposable for this clone.
 Removal requires its displayed CLEAN token and retains the branch. No whole-repo
 removal, automatic commit or rebase is performed. Press o for individual flow,
 e for a shell, L to keep local, s to snooze, and R to edit disposable directories.
+The prune-deps action deletes wholly ignored dependency directories (.venv,
+node_modules, target and similar) in idle checkouts after a PRUNE token, keeping
+the checkout, branches and uncommitted work; rebuild with the listed command.
 
 For history retention, reviewed knowledge and source-package boundaries, see
 `dev help ai-artifacts`.

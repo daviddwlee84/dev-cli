@@ -480,6 +480,12 @@ func (s *Service) collectRepo(ctx context.Context, g gitx.Repo, tasks []*task.Ta
 			if len(contents.Nested) > 0 {
 				i.add("nested-repository", "Nested repositories require individual preservation", 0, true)
 			}
+			if dirs, de := DependencyDirs(ctx, w.Path, contents); de != nil {
+				i.Complete = false
+				i.add("contents-error", "Regenerable directories could not be completely inspected", 0, false)
+			} else {
+				i.Regenerable = dirs
+			}
 		}
 		if op, busy, e := gitx.InProgress(w.Path); e != nil {
 			i.Complete = false
@@ -543,6 +549,9 @@ func (s *Service) collectRepo(ctx context.Context, g gitx.Repo, tasks []*task.Ta
 			i.add("no-attached-branch", "Unborn or detached checkout needs individual attention", 2, true)
 		}
 		s.lifecycleCandidates(&i, runtimeOK && metadataOK && pe == nil)
+		if !i.History {
+			s.pruneCandidate(&i, runtimeOK && metadataOK && pe == nil, now, opts.StaleDays)
+		}
 		s.finishItem(&i, pref, now, opts.StaleDays)
 		rows = append(rows, i)
 	}

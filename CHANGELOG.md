@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev triage` offers a `prune-deps` batch action that deletes regenerable
+  dependency and build directories (`.venv`, `node_modules`, `target`,
+  `vendor/bundle`, tool caches) in place in idle main clones, linked checkouts
+  and Git Tries, keeping the checkout, branches and uncommitted work. A
+  directory qualifies only when it is recognized by ecosystem evidence, wholly
+  ignored, a real directory and free of nested repositories; idleness excludes
+  the dependency directories' own mtimes. Approval requires `PRUNE N`, each
+  directory is revalidated before removal, and receipts record `removed` and
+  `reclaimed_bytes`. Reports and `--json` add an additive `regenerable` field
+  and finding.
+  The work list shows a `⌫ <size> prunable` badge for repositories with
+  eligible directories.
+
+### Fixed
+
+- Clicking a visible row in the `dev triage` work list no longer scrolls the
+  list so that the clicked row jumps to the bottom.
+- Previewing an action for a selected repository no longer lists its other rows
+  as blocked "action does not apply" targets when one of its rows matches.
+
 ## [0.3.6] - 2026-11-13
 
 ### Added

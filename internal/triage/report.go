@@ -48,6 +48,7 @@ type Item struct {
 	Status                *gitx.Status      `json:"status,omitempty"`
 	DisposableDirs        []string          `json:"disposable_directories"`
 	Ignored               []gitx.LocalPath  `json:"ignored,omitempty"`
+	Regenerable           []DependencyDir   `json:"regenerable,omitempty"`
 	Tasks                 []*task.Task      `json:"tasks,omitempty"`
 	Runtimes              []RuntimeLink     `json:"runtimes,omitempty"`
 	Findings              []Finding         `json:"findings"`

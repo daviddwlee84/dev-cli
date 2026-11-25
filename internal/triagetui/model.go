@@ -38,6 +38,7 @@ type changed struct{ Err error }
 type HandoffDone struct{ Err error }
 
 type Model struct {
+	top                         int
 	actions                     Actions
 	generation                  int
 	report                      triage.Report
@@ -161,6 +162,15 @@ func (m Model) openItem(item triage.Item, kind string) (tea.Model, tea.Cmd) {
 	return m, m.actions.Open(item, kind)
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	if mm, ok := next.(Model); ok {
+		mm.top = mm.render().top
+		return mm, cmd
+	}
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height

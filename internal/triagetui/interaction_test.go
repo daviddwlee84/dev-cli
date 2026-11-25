@@ -114,3 +114,37 @@ func TestOrganizerFramesFitNarrowAndASCII(t *testing.T) {
 		}
 	}
 }
+
+func TestClickingVisibleRowKeepsListScrollPosition(t *testing.T) {
+	m := New(Actions{})
+	m.width, m.height = 120, 20
+	items := []triage.Item{}
+	for n := 0; n < 60; n++ {
+		id := string(rune('a'+n/26)) + string(rune('a'+n%26))
+		items = append(items, triage.Item{ID: id, Name: "repo-" + id, Kind: "repo", RepositoryID: "/" + id + "/.git", RepositoryPath: "/" + id, Path: "/" + id, Scope: "checkout", Complete: true})
+	}
+	n, _ := m.Update(Loaded{Report: triage.Report{Items: items}})
+	m = n.(Model)
+	for range 40 {
+		n, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = n.(Model)
+	}
+	top := m.top
+	if top == 0 {
+		t.Fatal("list did not scroll")
+	}
+	var row hit
+	for _, p := range m.render().hits {
+		if p.kind == "row" && p.index == top+1 {
+			row = p
+		}
+	}
+	if row.kind == "" {
+		t.Fatal("visible row hit missing")
+	}
+	n, _ = m.Update(tea.MouseMsg{X: row.x + 1, Y: row.y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	m = n.(Model)
+	if m.cursor != top+1 || m.top != top {
+		t.Fatalf("click moved list: cursor=%d top=%d want cursor=%d top=%d", m.cursor, m.top, top+1, top)
+	}
+}
