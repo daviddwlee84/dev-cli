@@ -30,11 +30,14 @@ type Preview struct {
 	Discard []gitx.LocalPath `json:"discard,omitempty"`
 }
 type batchEntry struct {
-	tryApply func(context.Context) (experiment.RemovalResult, error)
-	preview  Preview
-	item     Item
-	plan     taskflow.Plan
-	service  *taskflow.Service
+	tryApply   func(context.Context) (experiment.RemovalResult, error)
+	pruneApply func(context.Context) (int64, []string, error)
+	prune      []DependencyDir
+	unmatched  bool
+	preview    Preview
+	item       Item
+	plan       taskflow.Plan
+	service    *taskflow.Service
 }
 type Batch struct {
 	ID      string
@@ -90,6 +93,14 @@ func (s *Service) Prepare(ctx context.Context, items []Item, action string) (Bat
 			e := batchEntry{item: item, preview: Preview{ItemID: item.ID, Path: item.Path, Action: a.Name, Reasons: []string{}, Effects: []string{}}}
 			if a.Availability == "blocked" {
 				e.preview.Reasons = append(e.preview.Reasons, a.Reason)
+				b.entries = append(b.entries, e)
+				continue
+			}
+			if a.Name == ActionPruneDeps {
+				e = s.preparePrune(ctx, item, b.ID)
+				if e.preview.Ready {
+					destructive += len(e.prune)
+				}
 				b.entries = append(b.entries, e)
 				continue
 			}
@@ -184,9 +195,26 @@ func (s *Service) Prepare(ctx context.Context, items []Item, action string) (Bat
 			b.entries = append(b.entries, e)
 		}
 		if !matched {
-			b.entries = append(b.entries, batchEntry{item: item, preview: Preview{ItemID: item.ID, Path: item.Path, Action: action, Reasons: []string{"action does not apply to this item; choose an action from its available actions"}, Effects: []string{}}})
+			b.entries = append(b.entries, batchEntry{unmatched: true, item: item, preview: Preview{ItemID: item.ID, Path: item.Path, Action: action, Reasons: []string{"action does not apply to this item; choose an action from its available actions"}, Effects: []string{}}})
 		}
 	}
+	// Selecting a collapsed repository includes rows the action cannot apply
+	// to. When another row of the same repository matched, those rows are
+	// selection expansion noise rather than reviewable targets.
+	matchedRepos := map[string]bool{}
+	for _, e := range b.entries {
+		if e.preview.Action == action && !e.unmatched {
+			matchedRepos[e.item.RepositoryID] = true
+		}
+	}
+	kept := b.entries[:0]
+	for _, e := range b.entries {
+		if e.unmatched && matchedRepos[e.item.RepositoryID] {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	b.entries = kept
 	if len(b.entries) == 0 {
 		return b, errors.New("selected items have no matching action")
 	}
@@ -197,6 +225,9 @@ func (s *Service) Prepare(ctx context.Context, items []Item, action string) (Bat
 		}
 		if action == "forget-try" {
 			b.Token = fmt.Sprintf("FORGET %d", destructive)
+		}
+		if action == ActionPruneDeps {
+			b.Token = fmt.Sprintf("PRUNE %d", destructive)
 		}
 	}
 	b.seal = b.fingerprint()
@@ -314,6 +345,10 @@ type Outcome struct {
 	Status          string                `json:"status"`
 	Error           string                `json:"error,omitempty"`
 	Steps           []taskflow.StepResult `json:"steps,omitempty"`
+	// Removed and ReclaimedBytes describe prune-deps effects. Bytes are the
+	// apparent size measured at preview, not filesystem free-space deltas.
+	Removed        []string `json:"removed,omitempty"`
+	ReclaimedBytes int64    `json:"reclaimed_bytes,omitempty"`
 }
 type Ledger struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -372,7 +407,20 @@ func (s *Service) Apply(ctx context.Context, b Batch, approval, token string, no
 				return l, err
 			}
 			l.Outcomes = l.Outcomes[:len(l.Outcomes)-1]
-			if e.tryApply != nil {
+			if e.pruneApply != nil {
+				freed, removed, err := e.pruneApply(context.WithoutCancel(ctx))
+				o.ReclaimedBytes, o.Removed = freed, removed
+				o.Status = "completed"
+				if err != nil {
+					o.Status, o.Error = "failed", SafeText(err.Error())
+					if errors.Is(err, taskflow.ErrStalePlan) {
+						o.Status = "stale"
+					}
+					if len(removed) > 0 {
+						o.Status = "partial"
+					}
+				}
+			} else if e.tryApply != nil {
 				result, err := e.tryApply(context.WithoutCancel(ctx))
 				o.CatalogID, o.OperationRecord = result.ID, result.Journal
 				o.Status = "completed"

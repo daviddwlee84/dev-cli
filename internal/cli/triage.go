@@ -32,7 +32,9 @@ produces a read-only report. Remote comparisons use cached tracking refs.
 Batch actions require selection, exact preview, and a separate approval.
 Commit, rebase, first publication, and whole-repository eviction remain individual
 decisions. Ignored files block linked-checkout removal unless their exact directory
-was explicitly declared disposable for this clone. Try Trash preserves the whole
+was explicitly declared disposable for this clone. prune-deps deletes wholly
+ignored, recognized dependency directories (.venv, node_modules, target, ...) in
+idle checkouts while keeping the checkout and its work. Try Trash preserves the whole
 directory; confirmed missing Tries can be forgotten only without durable references.
 REPOS and TRY selections open a scoped triage view reusing dashboard metadata.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if opts.Kind != "all" && opts.Kind != "repo" && opts.Kind != "try" {

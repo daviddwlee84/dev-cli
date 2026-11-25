@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/daviddwlee84/dev-cli/internal/triage"
+	"github.com/dustin/go-humanize"
 )
 
 var (
@@ -28,6 +29,9 @@ type frame struct {
 	text string
 	hits []hit
 	fits bool
+	// top is the first visible work-list row, persisted after each update so
+	// focusing a visible row never scrolls the list under the pointer.
+	top int
 }
 
 func fit(s string, w int) string {
@@ -49,7 +53,7 @@ func (m Model) glyph(s string) string {
 }
 func (m Model) View() string { return m.render().text }
 func (m Model) render() frame {
-	f := frame{}
+	f := frame{top: m.top}
 	w, h := max(20, m.width-2), max(10, m.height)
 	lines := []string{}
 	add := func(s string) { lines = append(lines, fit(m.glyph(s), w)) }
@@ -112,7 +116,7 @@ func (m Model) render() frame {
 				body = append(body, warning.Render("  ! "+triage.SafeText(r)))
 			}
 			for _, d := range p.Discard {
-				body = append(body, warning.Render(fmt.Sprintf("  Discard ignored: %s (%d bytes)", d.Path, d.Bytes)))
+				body = append(body, warning.Render(fmt.Sprintf("  Discard ignored: %s (%s)", d.Path, humanize.IBytes(uint64(max(d.Bytes, 0))))))
 			}
 		}
 		start := min(m.scroll, max(0, len(body)-1))
@@ -206,7 +210,15 @@ func (m Model) render() frame {
 			leftW = w * 3 / 5
 		}
 		add(muted.Render(padded("    ITEM", max(20, leftW/2)) + "  WORK TO REVIEW"))
-		start := max(0, m.cursor-available+1)
+		start := min(m.top, max(0, len(m.rows)-available))
+		if m.cursor < start {
+			start = m.cursor
+		}
+		if m.cursor >= start+available {
+			start = m.cursor - available + 1
+		}
+		start = max(0, start)
+		f.top = start
 		end := min(len(m.rows), start+available)
 		right := []string{}
 		if wide {

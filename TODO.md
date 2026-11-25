@@ -64,7 +64,7 @@ local-eviction work; no automated deletion or mirror writes are included.
 See [multi-remote and mirror research](backlog/multi-remote-mirror-recovery.md).
 
 ### P1 · L — Verified backup receipts and safe local eviction
-`dev triage` now supplies local recovery inventory and guarded synchronization/linked-checkout batches; whole-clone eviction remains pending.
+`dev triage` now supplies local recovery inventory, guarded synchronization/linked-checkout batches and in-place `prune-deps` for regenerable dependency directories; whole-clone eviction remains pending.
 Explicit Try disposal now offers system Trash and separately approved permanent
 data loss. Verified backup-based reclamation is still pending. Before adding
 `dev reclaim` or calling removal recoverable from a remote, build a fresh preflight that checks

@@ -76,6 +76,16 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 
 完整 repo 的可驗證備份／restore、外部引用分析、永久 repo 刪除與自動 commit/rebase 留待另外處理。目前分支已同步不足以證明整個 clone 可刪。
 
+## 清除可重建依賴
+
+`prune-deps` 會就地刪除可重建的依賴與 build 目錄，保留 checkout、branch，以及所有 tracked、未提交或未被 ignore 的檔案。它適用於主 clone、linked checkout 與 Git Try。`regenerable` 問題（`--report` 與 `--json` 中同名欄位）列出每個目錄、apparent size 與重建指令，例如 `uv sync`、`cargo build`。清單中可清除的 repository 會顯示 `⌫ <大小> prunable` 標記。
+
+只有已辨識、整個被 ignore、是真實目錄（不是 symlink）且不含 nested repo 的目錄會被提出。通用名稱需要對應 ecosystem 證據：`.venv`／`venv` 內有 `pyvenv.cfg`；`node_modules`、`.next`、`.turbo` 旁有 `package.json`；`target` 旁有 `Cargo.toml`；`vendor/bundle` 旁有 `Gemfile`；`deps`／`_build` 旁有 `mix.exs`。`.pytest_cache`、`.ruff_cache`、`.mypy_cache` 依名稱辨識。只列出最外層的符合目錄；清單固定，不使用 disposable 目錄規則，也不接受 pattern。
+
+只有 checkout 閒置達 `--stale-days` 時才是候選；計算時排除依賴目錄本身，所以最近重新安裝不會讓舊專案看起來還在使用。觀察不完整、locked／prunable checkout、Git operation、harness 擁有、已辨識的 agent，以及任何涵蓋該 checkout 的 runtime session 都會阻擋。未提交修改不阻擋，預覽會註明這些修改會保留。
+
+核准需要輸入 `PRUNE N`，N 為目錄數。每個目錄刪除前會重新確認其 filesystem identity、仍整個被 ignore、沒有 nested repo，並同時確認 checkout identity 與 runtime 佔用。目錄有變動時結果為 `stale`。每個目錄先在同一 filesystem 上改名移開再刪除。收據記錄 `removed` 路徑與 `reclaimed_bytes`。大小是 apparent size，APFS clone 或 hard link（例如 uv、pnpm cache）可能讓實際釋放空間較少。
+
 ## 從 REPOS 或 TRY 進入
 
 Dashboard 維持瀏覽：Enter／`o` 開啟目前項目，Space 展開／收合 REPOS worktrees，在 TRY 不使用。不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。

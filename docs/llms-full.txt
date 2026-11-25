@@ -1236,6 +1236,40 @@ Verified whole-repository backup/restore, external-reference analysis, permanent
 repo deletion, and automatic commit/rebase remain separate work. Being synced
 on the current branch is insufficient evidence to remove a whole clone.
 
+## Prune regenerable dependencies
+
+The `prune-deps` action deletes regenerable dependency and build directories in
+place while keeping the checkout, its branches and every tracked, dirty or
+unignored file. It applies to main clones, linked checkouts and Git Tries; the
+`regenerable` finding (also in `--report` and `--json` as `regenerable`) lists
+each directory, its apparent size and a rebuild command such as `uv sync` or
+`cargo build`. The work list shows a `⌫ <size> prunable` badge on repositories with
+eligible directories.
+
+A directory is proposed only when it is recognized, wholly ignored, a real
+directory (not a symlink) and free of nested repositories. Generic names need
+their ecosystem evidence: `.venv`/`venv` contain `pyvenv.cfg`; `node_modules`,
+`.next` and `.turbo` sit beside `package.json`; `target` beside `Cargo.toml`;
+`vendor/bundle` beside `Gemfile`; `deps`/`_build` beside `mix.exs`.
+`.pytest_cache`, `.ruff_cache` and `.mypy_cache` are recognized by name. Only
+the outermost match is listed, and the list is fixed: it does not use the
+disposable-directory policy and accepts no patterns.
+
+The action is a candidate only when the checkout has been idle for
+`--stale-days`, measured without the dependency directories themselves, so a
+recent install does not hide an old project. Incomplete observation, locked or
+prunable checkouts, Git operations, harness ownership, recognized agents and any
+covering runtime session block it. Uncommitted work does not block it; the
+preview notes that the work is kept.
+
+Approval requires `PRUNE N`, where N counts directories. Immediately before
+each removal the directory's filesystem identity, wholly ignored state and
+absence of nested repositories are rechecked, together with checkout identity
+and runtime occupancy. A changed directory produces a `stale` outcome. Each
+directory is renamed aside on the same filesystem and then deleted. Receipts
+record `removed` paths and `reclaimed_bytes`. Sizes are apparent sizes, so APFS
+clones or hard links (for example uv or pnpm caches) can return less space.
+
 ## Enter from REPOS or TRY
 
 The dashboard remains navigation-only: Enter/`o` opens the current item and
@@ -15761,6 +15795,16 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 其餘 ignored files 仍阻擋移除。預覽列出受影響路徑與大小。路徑逃逸、glob、Git administrative paths、symlink roots、nested repo 或 submodule 不會因規則而被略過；不追蹤 checkout 外的 symlink 目標。缺少穩定 filesystem identity 的平台不能登記此規則或執行 protected cleanup。
 
 完整 repo 的可驗證備份／restore、外部引用分析、永久 repo 刪除與自動 commit/rebase 留待另外處理。目前分支已同步不足以證明整個 clone 可刪。
+
+## 清除可重建依賴
+
+`prune-deps` 會就地刪除可重建的依賴與 build 目錄，保留 checkout、branch，以及所有 tracked、未提交或未被 ignore 的檔案。它適用於主 clone、linked checkout 與 Git Try。`regenerable` 問題（`--report` 與 `--json` 中同名欄位）列出每個目錄、apparent size 與重建指令，例如 `uv sync`、`cargo build`。清單中可清除的 repository 會顯示 `⌫ <大小> prunable` 標記。
+
+只有已辨識、整個被 ignore、是真實目錄（不是 symlink）且不含 nested repo 的目錄會被提出。通用名稱需要對應 ecosystem 證據：`.venv`／`venv` 內有 `pyvenv.cfg`；`node_modules`、`.next`、`.turbo` 旁有 `package.json`；`target` 旁有 `Cargo.toml`；`vendor/bundle` 旁有 `Gemfile`；`deps`／`_build` 旁有 `mix.exs`。`.pytest_cache`、`.ruff_cache`、`.mypy_cache` 依名稱辨識。只列出最外層的符合目錄；清單固定，不使用 disposable 目錄規則，也不接受 pattern。
+
+只有 checkout 閒置達 `--stale-days` 時才是候選；計算時排除依賴目錄本身，所以最近重新安裝不會讓舊專案看起來還在使用。觀察不完整、locked／prunable checkout、Git operation、harness 擁有、已辨識的 agent，以及任何涵蓋該 checkout 的 runtime session 都會阻擋。未提交修改不阻擋，預覽會註明這些修改會保留。
+
+核准需要輸入 `PRUNE N`，N 為目錄數。每個目錄刪除前會重新確認其 filesystem identity、仍整個被 ignore、沒有 nested repo，並同時確認 checkout identity 與 runtime 佔用。目錄有變動時結果為 `stale`。每個目錄先在同一 filesystem 上改名移開再刪除。收據記錄 `removed` 路徑與 `reclaimed_bytes`。大小是 apparent size，APFS clone 或 hard link（例如 uv、pnpm cache）可能讓實際釋放空間較少。
 
 ## 從 REPOS 或 TRY 進入
 

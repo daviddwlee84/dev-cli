@@ -129,6 +129,40 @@ Verified whole-repository backup/restore, external-reference analysis, permanent
 repo deletion, and automatic commit/rebase remain separate work. Being synced
 on the current branch is insufficient evidence to remove a whole clone.
 
+## Prune regenerable dependencies
+
+The `prune-deps` action deletes regenerable dependency and build directories in
+place while keeping the checkout, its branches and every tracked, dirty or
+unignored file. It applies to main clones, linked checkouts and Git Tries; the
+`regenerable` finding (also in `--report` and `--json` as `regenerable`) lists
+each directory, its apparent size and a rebuild command such as `uv sync` or
+`cargo build`. The work list shows a `⌫ <size> prunable` badge on repositories with
+eligible directories.
+
+A directory is proposed only when it is recognized, wholly ignored, a real
+directory (not a symlink) and free of nested repositories. Generic names need
+their ecosystem evidence: `.venv`/`venv` contain `pyvenv.cfg`; `node_modules`,
+`.next` and `.turbo` sit beside `package.json`; `target` beside `Cargo.toml`;
+`vendor/bundle` beside `Gemfile`; `deps`/`_build` beside `mix.exs`.
+`.pytest_cache`, `.ruff_cache` and `.mypy_cache` are recognized by name. Only
+the outermost match is listed, and the list is fixed: it does not use the
+disposable-directory policy and accepts no patterns.
+
+The action is a candidate only when the checkout has been idle for
+`--stale-days`, measured without the dependency directories themselves, so a
+recent install does not hide an old project. Incomplete observation, locked or
+prunable checkouts, Git operations, harness ownership, recognized agents and any
+covering runtime session block it. Uncommitted work does not block it; the
+preview notes that the work is kept.
+
+Approval requires `PRUNE N`, where N counts directories. Immediately before
+each removal the directory's filesystem identity, wholly ignored state and
+absence of nested repositories are rechecked, together with checkout identity
+and runtime occupancy. A changed directory produces a `stale` outcome. Each
+directory is renamed aside on the same filesystem and then deleted. Receipts
+record `removed` paths and `reclaimed_bytes`. Sizes are apparent sizes, so APFS
+clones or hard links (for example uv or pnpm caches) can return less space.
+
 ## Enter from REPOS or TRY
 
 The dashboard remains navigation-only: Enter/`o` opens the current item and

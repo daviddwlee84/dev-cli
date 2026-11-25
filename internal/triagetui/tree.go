@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/triage"
+	"github.com/dustin/go-humanize"
 )
 
 type treeRow struct {
@@ -192,7 +193,7 @@ func (m Model) choices() []actionChoice {
 	return out
 }
 func actionLabel(name string) string {
-	labels := map[string]string{"fetch": "Fetch remote refs", "push": "Push commits", "fast-forward": "Update checkout (fast-forward)", "park-warm": "Park tasks warm", "park-cold": "Park tasks cold", "retire": "Retire completed tasks", "remove-checkout": "Remove linked checkout", "trash-try": "Move Try to Trash", "forget-try": "Forget missing Try entry"}
+	labels := map[string]string{"fetch": "Fetch remote refs", "push": "Push commits", "fast-forward": "Update checkout (fast-forward)", "park-warm": "Park tasks warm", "park-cold": "Park tasks cold", "retire": "Retire completed tasks", "remove-checkout": "Remove linked checkout", "trash-try": "Move Try to Trash", "forget-try": "Forget missing Try entry", "prune-deps": "Prune regenerable dependencies"}
 	if s := labels[name]; s != "" {
 		return s
 	}
@@ -208,6 +209,8 @@ func actionHint(name string) string {
 		return "Preserve the whole folder in system Trash, including ignored files."
 	case "forget-try":
 		return "Remove unreferenced catalog metadata for a confirmed missing folder."
+	case "prune-deps":
+		return "Delete wholly ignored .venv/node_modules/target-style directories in idle checkouts; the checkout, branch and uncommitted work stay."
 	default:
 		return "Review exact targets, effects and blockers before approval."
 	}
@@ -223,10 +226,16 @@ func rowName(r treeRow) string {
 }
 func facts(items []triage.Item) []string {
 	unsaved, sync, occupied, unknown := 0, 0, 0, 0
+	var reclaimable int64
 	missing := false
 	for _, i := range items {
 		if i.Scope == "repository" {
 			continue
+		}
+		if a, ok := i.Action(triage.ActionPruneDeps); ok && a.Availability == "candidate" {
+			for _, d := range i.Regenerable {
+				reclaimable += d.Bytes
+			}
 		}
 		u, s, o, x := false, false, false, !i.Complete
 		for _, f := range i.Findings {
@@ -269,6 +278,9 @@ func facts(items []triage.Item) []string {
 	}
 	if unknown > 0 {
 		out = append(out, fmt.Sprintf("? %d inspect", unknown))
+	}
+	if reclaimable > 0 {
+		out = append(out, "⌫ "+humanize.IBytes(uint64(reclaimable))+" prunable")
 	}
 	if len(out) == 0 {
 		out = append(out, "review local work")
@@ -335,5 +347,5 @@ func (m *Model) showResultDetails() {
 	m.scroll = 0
 }
 func helpLines() []string {
-	return []string{"Select items → Choose action → Preview → Results", "Selection: Space / checkbox toggles; Ctrl+A selects or clears visible targets", "Collapsed repo selection includes its branches and registered checkouts", "Expand: left/right arrows or the disclosure marker", "Enter shows details. Tab focuses the Choose action button; Ctrl+O opens actions", "Click a row to focus. Right click opens its explicit action scope", "Filters: / text · g repo/Try · d deferred", "Review intent: L keep local · s snooze · U clear", "R edits disposable-directory policy; it never authorizes undeclared deletion", "Individual tools: o flow · e shell · v runtime", "Results: Enter details · e shell · Ctrl+O new action · r refresh", "Refresh never fetches. New actions and retries always need a new preview", "Esc returns; q quits. During Apply, Esc stops after the current operation"}
+	return []string{"Select items → Choose action → Preview → Results", "Selection: Space / checkbox toggles; Ctrl+A selects or clears visible targets", "Collapsed repo selection includes its branches and registered checkouts", "Expand: left/right arrows or the disclosure marker", "Enter shows details. Tab focuses the Choose action button; Ctrl+O opens actions", "Click a row to focus. Right click opens its explicit action scope", "Filters: / text · g repo/Try · d deferred", "Review intent: L keep local · s snooze · U clear", "R edits disposable-directory policy; it never authorizes undeclared deletion", "Prune regenerable dependencies deletes wholly ignored .venv/node_modules/target in idle checkouts (PRUNE N)", "Individual tools: o flow · e shell · v runtime", "Results: Enter details · e shell · Ctrl+O new action · r refresh", "Refresh never fetches. New actions and retries always need a new preview", "Esc returns; q quits. During Apply, Esc stops after the current operation"}
 }
