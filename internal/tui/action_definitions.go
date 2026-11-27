@@ -51,6 +51,12 @@ func newActionRegistry() []ActionSpec {
 		}
 		return requires(c.model.actions.Open != nil, "Opening tasks")
 	}).Description = "Open an eligible task checkout. Cold or missing work needs explicit resume or recovery."
+	add(ViewTasks, listActionCd, "cd to folder", "C", nil, func(c ActionContext) string {
+		if err := taskOpenBlocker(*c.task); err != nil {
+			return err.Error()
+		}
+		return requires(c.model.actions.Open != nil, "Opening tasks")
+	})
 	add(ViewTasks, listActionEditNext, "edit next action", "c", nil, func(c ActionContext) string { return requires(c.model.actions.SetNext != nil, "Next-action editing") })
 	add(ViewTasks, listActionPark, "park warm", "p", func(c ActionContext) bool {
 		return c.task != nil && (c.task.Task.State == task.Hot || c.task.Task.State == task.Warm)
@@ -77,6 +83,19 @@ func newActionRegistry() []ActionSpec {
 		}
 		return "open repository"
 	}
+	add(ViewRepos, listActionCd, "cd to folder", "C", nil, func(c ActionContext) string {
+		if c.repo.Repo.Unavailable != "" {
+			return c.repo.Repo.Unavailable
+		}
+		if c.repo.child() {
+			checkout, ok := c.repo.checkout()
+			if !ok || !checkout.Exists || checkout.Worktree.Prunable {
+				return "Worktree checkout is missing or prunable"
+			}
+			return requires(c.model.actions.OpenCheckout != nil, "Opening worktrees")
+		}
+		return requires(c.model.actions.OpenRepo != nil, "Opening repositories")
+	})
 	add(ViewRepos, listActionToggleWorktrees, "expand or collapse worktrees", "space", func(c ActionContext) bool { return c.repo != nil && (c.repo.child() || c.repo.Repo.Worktrees > 0) }, func(c ActionContext) string {
 		if c.repo.Repo.Context.WorktreeErr != nil {
 			return "Worktree observations are unavailable"
@@ -160,6 +179,7 @@ func newActionRegistry() []ActionSpec {
 		return workflow(c)
 	})
 	add(ViewTries, listActionOpen, "open Try", "enter o", func(c ActionContext) bool { return c.try.Present() }, tryApply)
+	add(ViewTries, listActionCd, "cd to folder", "C", func(c ActionContext) bool { return c.try.Present() }, tryApply)
 
 	add(ViewRemote, listActionRemoteContent, "Show snippets", "", nil, nil).Scope = actionView
 	specs[len(specs)-1].Title = func(c ActionContext) string {
@@ -199,6 +219,11 @@ func newActionRegistry() []ActionSpec {
 		return "copy repository URL…"
 	}
 	add(ViewRemote, listActionCopyCloneURL, "copy clone URL", "", func(c ActionContext) bool { return c.remote != nil }, copyReady)
+	add(ViewRemote, listActionCd, "cd to folder", "C", func(c ActionContext) bool {
+		return !c.model.snippetsActive() && c.remote != nil && c.remote.Cloned()
+	}, func(c ActionContext) string {
+		return requires(c.model.actions.OpenRemote != nil, "Opening local checkouts")
+	})
 	add(ViewRemote, listActionOpen, "open local checkout", "enter o", func(c ActionContext) bool {
 		if c.model.snippetsActive() {
 			_, ok := c.model.currentSnippet()

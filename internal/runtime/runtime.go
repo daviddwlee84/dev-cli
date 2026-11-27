@@ -179,13 +179,17 @@ func (e *ErrUnavailable) Error() string {
 //
 // "auto" prefers the richest backend that is actually available: herdr (which
 // models workspaces, worktrees and agent sessions), then tmux, then zellij,
-// then None.
+// then None. Inside a herdr-core terminal (HC_TERMINAL_ID without an inner
+// HERDR_ENV, TMUX or ZELLIJ) herdr-core comes first, because opening a classic
+// Herdr workspace there would attach a nested Herdr client inside the window.
 // None is always available so dev never hard-fails for lack of a multiplexer.
 func Select(backend string) Runtime {
 	herdr, tmux, zellij, none := NewHerdr(), NewTmux(), NewZellij(), None{}
 	switch backend {
 	case "herdr":
 		return herdr
+	case "herdr-core":
+		return NewHerdrCore()
 	case "tmux":
 		return tmux
 	case "zellij":
@@ -193,6 +197,11 @@ func Select(backend string) Runtime {
 	case "none":
 		return none
 	case "", "auto":
+		if insideHerdrCoreOnly(os.Getenv) {
+			if core := NewHerdrCore(); core.Available() {
+				return core
+			}
+		}
 		if herdr.Available() {
 			return herdr
 		}
@@ -208,7 +217,20 @@ func Select(backend string) Runtime {
 }
 
 // All returns every backend, for `dev doctor` to report on.
-func All() []Runtime { return []Runtime{NewHerdr(), NewTmux(), NewZellij(), None{}} }
+func All() []Runtime { return []Runtime{NewHerdr(), NewHerdrCore(), NewTmux(), NewZellij(), None{}} }
+
+// insideHerdrCoreOnly reports an hc terminal with no inner multiplexer.
+func insideHerdrCoreOnly(getenv func(string) string) bool {
+	if getenv("HC_TERMINAL_ID") == "" {
+		return false
+	}
+	for _, inner := range []string{"HERDR_ENV", "TMUX", "ZELLIJ"} {
+		if getenv(inner) != "" {
+			return false
+		}
+	}
+	return true
+}
 
 // haveBinary reports whether name is on PATH.
 func haveBinary(name string) bool {

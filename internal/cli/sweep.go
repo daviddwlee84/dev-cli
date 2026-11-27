@@ -666,8 +666,8 @@ func ephemeralSweepRuntimes(app *App) []runtime.Runtime {
 	if app.runtimeInstance != nil {
 		return []runtime.Runtime{app.runtimeInstance}
 	}
-	out := make([]runtime.Runtime, 0, 3)
-	for _, name := range []string{"herdr", "tmux", "zellij"} {
+	out := make([]runtime.Runtime, 0, 4)
+	for _, name := range []string{"herdr", "herdr-core", "tmux", "zellij"} {
 		out = append(out, app.runtimeNamed(name))
 	}
 	return out

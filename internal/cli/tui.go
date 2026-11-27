@@ -380,9 +380,25 @@ func runTUI(app *App) error {
 		return collectTries(ctx, appState.Current(), rt, includeAll)
 	}
 	openResolved := func(ctx context.Context, dir, label, statusLabel string) (tui.OpenResult, error) {
-		rt, err := runtimeResolver.Resolve(ctx)
-		if err != nil {
-			return tui.OpenResult{}, err
+		if statusLabel == "" {
+			statusLabel = label
+		}
+		target := tui.OpenTargetFrom(ctx)
+		switch target {
+		case tui.OpenTargetCD:
+			return tui.OpenResult{Directory: dir}, nil
+		case openTargetSheprd:
+			if err := openInSheprd(ctx, dir); err != nil {
+				return tui.OpenResult{}, err
+			}
+			return tui.OpenResult{Status: statusLabel + " open in Sheprd"}, nil
+		}
+		rt, explicit := openTargetRuntime(appState.Current(), target)
+		if !explicit {
+			var err error
+			if rt, err = runtimeResolver.Resolve(ctx); err != nil {
+				return tui.OpenResult{}, err
+			}
 		}
 		handle, err := openCheckout(ctx, rt, dir, label)
 		if err != nil {
@@ -391,14 +407,23 @@ func runTUI(app *App) error {
 		if rt.Name() == "none" {
 			return tui.OpenResult{Directory: dir}, nil
 		}
-		if statusLabel == "" {
-			statusLabel = label
-		}
-		return tui.OpenResult{
+		result := tui.OpenResult{
 			Status:        fmt.Sprintf("%s open in %s (%s)", statusLabel, rt.Name(), handle.Handle),
 			RuntimeHandle: handle.Handle,
-		}, nil
+		}
+		if explicit {
+			result.Runtime = rt.Name()
+		}
+		return result, nil
 	}
+	openTargets := newOpenTargetCache(func() []tui.OpenTarget {
+		active := "none"
+		if rt, err := runtimeResolver.Resolve(runCtx); err == nil && rt != nil {
+			active = rt.Name()
+		}
+		open := app.Cfg.EffectiveOpen()
+		return computeOpenTargets(runCtx, active, openSettings{Mode: open.Mode, Default: open.Default}, defaultOpenTargetProbe())
+	})
 
 	actions := tui.Actions{
 		Issues:    tuiIssueActions(appState),
@@ -489,11 +514,34 @@ func runTUI(app *App) error {
 		Tries: tui.TryActions{
 			Reload: reloadTries,
 			Apply: func(ctx context.Context, request tui.TryRequest) (tui.TryActionResult, error) {
-				rt, err := runtimeResolver.Resolve(ctx)
-				if err != nil {
-					return tui.TryActionResult{}, err
+				target := tui.OpenTargetFrom(ctx)
+				if request.Action == tui.TryOpen && (target == tui.OpenTargetCD || target == openTargetSheprd) {
+					// The no-runtime backend yields the Try's validated path.
+					result, err := applyTryAction(ctx, appState.Current(), runtime.None{}, request)
+					if err != nil || target == tui.OpenTargetCD {
+						return result, err
+					}
+					dir := result.CD
+					result.CD = ""
+					if err := openInSheprd(ctx, dir); err != nil {
+						return result, err
+					}
+					result.Status += " in Sheprd"
+					return result, nil
 				}
-				return applyTryAction(ctx, appState.Current(), rt, request)
+				rt, explicit := openTargetRuntime(appState.Current(), target)
+				if !explicit || request.Action != tui.TryOpen {
+					var err error
+					if rt, err = runtimeResolver.Resolve(ctx); err != nil {
+						return tui.TryActionResult{}, err
+					}
+					explicit = false
+				}
+				result, err := applyTryAction(ctx, appState.Current(), rt, request)
+				if explicit && result.RuntimeHandle != "" {
+					result.Runtime = rt.Name()
+				}
+				return result, err
 			},
 		},
 		Notes: tui.NoteActions{
@@ -564,6 +612,8 @@ func runTUI(app *App) error {
 			// `dev resume`/start action with collision checks.
 			return openResolved(ctx, checkout, t.Title(), "")
 		},
+
+		OpenTargets: openTargets.Get,
 
 		OpenRepo: func(ctx context.Context, r tui.RepoRow) (tui.OpenResult, error) {
 			path, err := repo.ValidateNavigation(ctx, r.Repo, "")
@@ -802,6 +852,9 @@ func runTUI(app *App) error {
 			return app.cdDirective(dir)
 		}
 		if handle := m.Activation(); handle != "" {
+			if name := m.ActivationRuntime(); name != "" {
+				return activateRuntime(ctxOf(), app.runtimeNamed(name), handle)
+			}
 			rt, resolveErr := runtimeResolver.Resolve(ctxOf())
 			if resolveErr != nil {
 				return resolveErr

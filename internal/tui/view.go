@@ -1175,6 +1175,8 @@ func (m Model) renderDetail() string {
 		row := m.skillUpdateTarget
 		return "  " + styleTitle.Render("update "+string(row.Scope)+" skill "+row.Name) +
 			"\n  " + styleHelp.Render("enter to update this skill · esc to cancel")
+	case modeOpenTarget:
+		return m.renderOpenTargets()
 	case modeCopy:
 		return "  " + styleTitle.Render("copy ") + m.copyBindingHelp() +
 			"\n  " + styleHelp.Render("press a second key · esc to cancel")

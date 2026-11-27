@@ -272,7 +272,7 @@ func prSyncRuntimes(app *App) []runtime.Runtime {
 	// Observe all installed backends when runtime observation is enabled.
 	// runtime.None still contributes its local process observation.
 	backends := []runtime.Runtime{runtime.None{}}
-	for _, name := range []string{"herdr", "tmux", "zellij"} {
+	for _, name := range []string{"herdr", "herdr-core", "tmux", "zellij"} {
 		backend := app.runtimeNamed(name)
 		if backend.Available() {
 			backends = append(backends, backend)

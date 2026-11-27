@@ -68,7 +68,12 @@ exclusive-create checks before mutation. Other row-dependent actions and REMOTE
 clone freshness checks remain guarded; pending rows are not mutation authority.
 
 REPOS Enter outside filter input opens the selected repository without creating
-a task. `s` and `d` open the full start wizard with worktree or direct preselected.
+a task. With two or more installed open targets (configured runtime, Herdr
+Desktop space, Herdr workspace, Sheprd, `cd here`, and tmux/zellij from inside
+them) Enter first asks where: `1-9` choose, Enter takes the default, Esc cancels;
+`[tui.open]` sets the default or skips the question. `C` on a task, repository,
+worktree, Try or cloned REMOTE row always quits into that folder, like
+`dev repo cd`. `s` and `d` open the full start wizard with worktree or direct preselected.
 The wizard asks for the task and necessary branch/base/next action, then offers
 open (default) or stay before final creation confirmation. A base is explicit in
 the reviewed plan, never inferred from an arbitrary checked-out branch.

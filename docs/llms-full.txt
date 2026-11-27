@@ -6906,7 +6906,12 @@ exclusive-create checks before mutation. Other row-dependent actions and REMOTE
 clone freshness checks remain guarded; pending rows are not mutation authority.
 
 REPOS Enter outside filter input opens the selected repository without creating
-a task. `s` and `d` open the full start wizard with worktree or direct preselected.
+a task. With two or more installed open targets (configured runtime, Herdr
+Desktop space, Herdr workspace, Sheprd, `cd here`, and tmux/zellij from inside
+them) Enter first asks where: `1-9` choose, Enter takes the default, Esc cancels;
+`[tui.open]` sets the default or skips the question. `C` on a task, repository,
+worktree, Try or cloned REMOTE row always quits into that folder, like
+`dev repo cd`. `s` and `d` open the full start wizard with worktree or direct preselected.
 The wizard asks for the task and necessary branch/base/next action, then offers
 open (default) or stay before final creation confirmation. A base is explicit in
 the reviewed plan, never inferred from an arbitrary checked-out branch.
@@ -8696,13 +8701,13 @@ Key sections:
 | Section | Controls |
 |---|---|
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
-| `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
+| `[runtime]` | `auto`, Herdr, herdr-core (Herdr Desktop), tmux, Zellij, or none plus metadata settings |
 | `[worktree]` | local ignored-file provisioning, linked dirs, setup commands, strategies, timeout |
 | `[local_files]` | host ceilings for portable files; project overlays provide the separate off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
 | `[picker]` | optional external selector argv; empty selects the built-in picker |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
-| `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
+| `[tui]` / `[[tui.tools]]` / `[tui.open]` | columns, sorting, external-tool bindings, and the Enter open-target picker |
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
 | `[[agent]]`, `[agent.run]`, `[agent.open]` | host-only names, optional descriptions, global default selection, and independent batch/foreground prompt launchers; no built-in entries |
@@ -8934,7 +8939,7 @@ The following content is included from `internal/skill/dev-cli/references/comman
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
-- `--runtime` — override runtime backend: herdr, tmux, zellij or none
+- `--runtime` — override runtime backend: herdr, herdr-core, tmux, zellij or none
 - `--scaffolds` — path to scaffolds.toml (default: $XDG_CONFIG_HOME/dev/scaffolds.toml)
 
 ### `dev activity`
@@ -12491,6 +12496,20 @@ background_refresh = true
 
 This option controls only automatic Tailscale status in the active SSH view. LAN scans and connection tests remain explicit. `ssh diagnose --ping --network-only ALIAS` observes ICMP/TCP/banner without an SSH authentication attempt; omit `--network-only` for full verification. `--network-only` cannot combine with `--compare-qos`.
 
+## Dashboard open targets
+
+```toml
+[tui.open]
+mode = "ask"        # ask (default) | default
+default = "runtime" # runtime | herdr-desktop | herdr-core | herdr | sheprd | tmux | zellij | cd
+```
+
+With `mode = "ask"`, Enter asks where to open a local checkout whenever two or
+more targets are installed; `default` is preselected. `mode = "default"` always
+uses `default` without asking. Probes are read-only (binary lookup, server and
+window status). `C` always cds regardless of this table and is now a reserved
+dashboard key, so a `[[tui.tools]]` entry bound to `C` must move.
+
 ## Optional dashboard observations
 
 The dashboard version hint uses the existing update configuration and release
@@ -12737,6 +12756,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 |---|---|---|
 | core repository/task/worktree operations | Git | unavailable; Git is the only hard runtime dependency |
 | rich grouped runtime and agent activity | Herdr server + CLI | `auto` tries tmux, then Zellij, then none |
+| Herdr Desktop spaces and hc agent activity | herdr-core (`hc`) server, optional Herdr Desktop window | inside an hc terminal `auto` prefers herdr-core; without a window it opens plain hc terminals; no worktree grouping, exact-pane launch or `--run` |
 | named terminal session | tmux or compatible Zellij | `none` preserves core behavior and shell navigation |
 | GitHub pull requests/remotes | `gh` authenticated | branch still pushes when Git works; browser/manual flow may be needed |
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
@@ -20769,7 +20789,11 @@ observations 尚在載入也能進入；選單開啟期間原選取列消失，�
 目的地、nested-repository 限制與 exclusive-create 條件。其他依賴所選列的操作
 及 REMOTE clone 的 freshness checks 維持不變；pending rows 不是 mutation 授權。
 
-離開篩選輸入後，REPOS Enter 只開啟所選 repository，不建立 task。`s`／`d` 開啟完整 start
+離開篩選輸入後，REPOS Enter 只開啟所選 repository，不建立 task。若安裝了兩個以上的
+open target（configured runtime、Herdr Desktop space、Herdr workspace、Sheprd、`cd here`，
+以及只在其內部才列出的 tmux／zellij），Enter 會先詢問要開在哪裡：`1-9` 選擇、Enter 用預設、
+Esc 取消；`[tui.open]` 可設定預設或略過詢問。在 task、repository、worktree、Try 或已 clone
+的 REMOTE 列按 `C`，一律離開 dashboard 並 cd 到該資料夾，等同 `dev repo cd`。`s`／`d` 開啟完整 start
 wizard，分別預選 worktree／direct。Wizard 詢問 task 與必要的 branch、base、
 next action，最終建立確認前可選 open（預設）或 stay。Reviewed plan 的 base
 必須明確，不能由任意 checked-out branch 推定。
@@ -22456,13 +22480,13 @@ dev ssh init --apply       # confirmation 後安裝
 | Section | 控制內容 |
 |---|---|
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
-| `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
+| `[runtime]` | `auto`、Herdr、herdr-core（Herdr Desktop）、tmux、Zellij 或 none，以及 metadata settings |
 | `[worktree]` | local ignored-file provisioning、linked dirs、setup commands、strategies、timeout |
 | `[local_files]` | portable files 的 host ceilings；project overlay 提供獨立的 off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
 | `[picker]` | optional external selector argv；空 array 會選用 built-in picker |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
-| `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
+| `[tui]` / `[[tui.tools]]` / `[tui.open]` | columns、sorting、external-tool bindings 與 Enter 的 open-target picker |
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
 | `[[agent]]`、`[agent.run]`、`[agent.open]` | host-only name、optional description、global default selection 與各自獨立的 batch/foreground prompt launcher；沒有 built-in entry |
@@ -22683,7 +22707,7 @@ Child process 不能改變 parent working directory，因此受信任的 `shell-
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
-- `--runtime` — override runtime backend: herdr, tmux, zellij or none
+- `--runtime` — override runtime backend: herdr, herdr-core, tmux, zellij or none
 - `--scaffolds` — path to scaffolds.toml (default: $XDG_CONFIG_HOME/dev/scaffolds.toml)
 
 ### `dev activity`
@@ -26184,6 +26208,19 @@ background_refresh = true
 
 這個選項只控制 SSH 頁啟用時的 Tailscale 背景狀態更新；LAN 掃描及連線測試仍須明確觸發。`ssh diagnose --ping --network-only ALIAS` 觀測 ICMP／TCP／banner，不嘗試 SSH authentication；省略 `--network-only` 可做完整驗證。`--network-only` 不可搭配 `--compare-qos`。
 
+## Dashboard open targets
+
+```toml
+[tui.open]
+mode = "ask"        # ask（預設）| default
+default = "runtime" # runtime | herdr-desktop | herdr-core | herdr | sheprd | tmux | zellij | cd
+```
+
+`mode = "ask"` 時，只要安裝了兩個以上的 target，Enter 開啟本地 checkout 前就會詢問，並預選
+`default`。`mode = "default"` 一律使用 `default`，不詢問。探測都是唯讀的（binary lookup、
+server 與視窗狀態）。`C` 不受此表影響、一律 cd，且現在是 dashboard 保留鍵，綁在 `C` 的
+`[[tui.tools]]` 需要改綁。
+
 ## Dashboard 的 optional 觀測
 
 Dashboard 版本提示沿用既有更新設定與 release 快取，不執行升級。REMOTE 統計是
@@ -26411,6 +26448,7 @@ Done 後遞迴 handoff 需重新載入 shell integration。
 |---|---|---|
 | 核心 repository/task/worktree 操作 | Git | 無法使用；Git 是唯一 hard runtime dependency |
 | grouped runtime 與 agent activity | Herdr server + CLI | `auto` 改試 tmux、Zellij，最後 none |
+| Herdr Desktop space 與 hc agent activity | herdr-core（`hc`）server，Herdr Desktop 視窗為 optional | 在 hc terminal 內 `auto` 優先選 herdr-core；沒有視窗時改開一般 hc terminal；不支援 worktree grouping、exact-pane launch 與 `--run` |
 | named terminal session | tmux 或相容 Zellij | `none` 保留核心 behavior 與 shell navigation |
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |

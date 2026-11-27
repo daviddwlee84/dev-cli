@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -211,6 +212,8 @@ type TUI struct {
 	Fleet FleetTable `toml:"fleet"`
 	// SSH controls optional local Tailscale observation in the SSH dashboard.
 	SSH SSHTable `toml:"ssh"`
+	// Open controls where Enter opens a local checkout.
+	Open OpenTable `toml:"open"`
 	// Tools are the external programs the dashboard can hand the terminal to,
 	// each on its own key. When empty, DefaultTools applies.
 	//
@@ -252,6 +255,30 @@ type FleetTable struct {
 
 type SSHTable struct {
 	BackgroundRefresh bool `toml:"background_refresh"`
+}
+
+// Open target IDs accepted by tui.open.default.
+var OpenTargets = []string{"runtime", "herdr-desktop", "herdr-core", "herdr", "sheprd", "tmux", "zellij", "cd"}
+
+// OpenTable configures the dashboard's Enter target picker.
+type OpenTable struct {
+	// Mode is "ask" (the default: choose when two or more targets are
+	// installed) or "default" (always use Default without asking).
+	Mode string `toml:"mode"`
+	// Default is the preselected target, "runtime" when empty.
+	Default string `toml:"default"`
+}
+
+// EffectiveOpen fills the Open table's defaults.
+func (c Config) EffectiveOpen() OpenTable {
+	o := c.TUI.Open
+	if o.Mode == "" {
+		o.Mode = "ask"
+	}
+	if o.Default == "" {
+		o.Default = "runtime"
+	}
+	return o
 }
 
 // RepoTable configures columns and ordering in the TUI REPOS view.
@@ -316,6 +343,7 @@ var reservedKeys = map[string]string{
 	"?": "help", "H": "repo activity heatmap", "e": "edit config",
 	"O": "cycle repo sort", "R": "reverse repo sort",
 	"m": "edit repo metadata", "y": "copy repo metadata", "f": "favorite repository",
+	"C": "cd to folder",
 }
 
 // ReservedKey reports the dashboard binding a key would collide with.
@@ -506,9 +534,17 @@ func (c Config) Validate() error {
 		return err
 	}
 	switch c.Runtime.Backend {
-	case "", "auto", "herdr", "tmux", "zellij", "none":
+	case "", "auto", "herdr", "herdr-core", "tmux", "zellij", "none":
 	default:
-		return fmt.Errorf("runtime.backend %q: want auto, herdr, tmux, zellij or none", c.Runtime.Backend)
+		return fmt.Errorf("runtime.backend %q: want auto, herdr, herdr-core, tmux, zellij or none", c.Runtime.Backend)
+	}
+	switch c.TUI.Open.Mode {
+	case "", "ask", "default":
+	default:
+		return fmt.Errorf("tui.open.mode %q: want ask or default", c.TUI.Open.Mode)
+	}
+	if d := c.TUI.Open.Default; d != "" && !slices.Contains(OpenTargets, d) {
+		return fmt.Errorf("tui.open.default %q: want one of %s", d, strings.Join(OpenTargets, ", "))
 	}
 	if c.Paths.WorktreePath == "" {
 		return errors.New("paths.worktree_path must not be empty")

@@ -608,13 +608,13 @@ Key sections:
 | Section | Controls |
 |---|---|
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
-| `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
+| `[runtime]` | `auto`, Herdr, herdr-core (Herdr Desktop), tmux, Zellij, or none plus metadata settings |
 | `[worktree]` | local ignored-file provisioning, linked dirs, setup commands, strategies, timeout |
 | `[local_files]` | host ceilings for portable files; project overlays provide the separate off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
 | `[picker]` | optional external selector argv; empty selects the built-in picker |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
-| `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
+| `[tui]` / `[[tui.tools]]` / `[tui.open]` | columns, sorting, external-tool bindings, and the Enter open-target picker |
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
 | `[[agent]]`, `[agent.run]`, `[agent.open]` | host-only names, optional descriptions, global default selection, and independent batch/foreground prompt launchers; no built-in entries |
@@ -1251,6 +1251,20 @@ background_refresh = true
 ```
 
 This option controls only automatic Tailscale status in the active SSH view. LAN scans and connection tests remain explicit. `ssh diagnose --ping --network-only ALIAS` observes ICMP/TCP/banner without an SSH authentication attempt; omit `--network-only` for full verification. `--network-only` cannot combine with `--compare-qos`.
+
+## Dashboard open targets
+
+```toml
+[tui.open]
+mode = "ask"        # ask (default) | default
+default = "runtime" # runtime | herdr-desktop | herdr-core | herdr | sheprd | tmux | zellij | cd
+```
+
+With `mode = "ask"`, Enter asks where to open a local checkout whenever two or
+more targets are installed; `default` is preselected. `mode = "default"` always
+uses `default` without asking. Probes are read-only (binary lookup, server and
+window status). `C` always cds regardless of this table and is now a reserved
+dashboard key, so a `[[tui.tools]]` entry bound to `C` must move.
 
 ## Optional dashboard observations
 

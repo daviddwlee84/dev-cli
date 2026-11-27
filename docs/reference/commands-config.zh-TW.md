@@ -527,13 +527,13 @@ dev ssh init --apply       # confirmation 後安裝
 | Section | 控制內容 |
 |---|---|
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
-| `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
+| `[runtime]` | `auto`、Herdr、herdr-core（Herdr Desktop）、tmux、Zellij 或 none，以及 metadata settings |
 | `[worktree]` | local ignored-file provisioning、linked dirs、setup commands、strategies、timeout |
 | `[local_files]` | portable files 的 host ceilings；project overlay 提供獨立的 off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
 | `[picker]` | optional external selector argv；空 array 會選用 built-in picker |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
-| `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
+| `[tui]` / `[[tui.tools]]` / `[tui.open]` | columns、sorting、external-tool bindings 與 Enter 的 open-target picker |
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
 | `[[agent]]`、`[agent.run]`、`[agent.open]` | host-only name、optional description、global default selection 與各自獨立的 batch/foreground prompt launcher；沒有 built-in entry |
@@ -1103,6 +1103,19 @@ background_refresh = true
 ```
 
 這個選項只控制 SSH 頁啟用時的 Tailscale 背景狀態更新；LAN 掃描及連線測試仍須明確觸發。`ssh diagnose --ping --network-only ALIAS` 觀測 ICMP／TCP／banner，不嘗試 SSH authentication；省略 `--network-only` 可做完整驗證。`--network-only` 不可搭配 `--compare-qos`。
+
+## Dashboard open targets
+
+```toml
+[tui.open]
+mode = "ask"        # ask（預設）| default
+default = "runtime" # runtime | herdr-desktop | herdr-core | herdr | sheprd | tmux | zellij | cd
+```
+
+`mode = "ask"` 時，只要安裝了兩個以上的 target，Enter 開啟本地 checkout 前就會詢問，並預選
+`default`。`mode = "default"` 一律使用 `default`，不詢問。探測都是唯讀的（binary lookup、
+server 與視窗狀態）。`C` 不受此表影響、一律 cd，且現在是 dashboard 保留鍵，綁在 `C` 的
+`[[tui.tools]]` 需要改綁。
 
 ## Dashboard 的 optional 觀測
 

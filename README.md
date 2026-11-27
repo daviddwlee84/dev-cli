@@ -22,7 +22,7 @@ It exists to stop four things collapsing into one:
 ```
 git remote      durable code state, the source of truth
 git worktree    a disposable local checkout
-herdr / tmux / zellij
+herdr / herdr-core / tmux / zellij
                 a per-host live runtime
 dev             human intent: what am I working on, and what is next
 ```
@@ -328,7 +328,8 @@ dev self doctor             # what works on this machine, and what degrades
 Only **git** is required at runtime. The system `ssh` client enables SSH host
 inspection, probing, bootstrap, and fleet transport; `ssh-keygen` enables public
 companion derivation and key generation; PowerShell is needed on a Windows
-OpenSSH target. `herdr`, `tmux`, `zellij`, `gh`, `glab`, and Azure CLI each enable
+OpenSSH target. `herdr`, `herdr-core` (`hc`, with optional Herdr Desktop), `tmux`,
+`zellij`, `gh`, `glab`, and Azure CLI each enable
 other capabilities and degrade cleanly when absent. `dev self doctor` checks these
 capabilities locally without evaluating an alias or contacting a host.
 
@@ -1384,6 +1385,13 @@ tree always reconciles with WT. `H` opens the selected repo's
 calendar-year activity heatmaps and `e` edits config. Returning from the editor, or
 pressing `r`, reparses config and reloads data/tool bindings without restarting
 the TUI; a runtime-backend change is reported as requiring restart.
+
+When several open targets are installed, Enter asks where to open the selected
+checkout: the configured runtime, a Herdr Desktop space, a Herdr workspace,
+Sheprd, or `cd here` (`[tui.open]` sets the default or skips the question).
+`C` always quits into the selected folder, like `dev repo cd`. Inside a
+herdr-core terminal `runtime.backend = "auto"` selects `herdr-core`, so Enter no
+longer attaches a nested Herdr client in the Herdr Desktop pane.
 
 REPOS includes `LATEST`, defined as the newest dirty-file mtime, commit time, or
 task update, plus asynchronous `SIZE`. Size is portable logical bytes:

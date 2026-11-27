@@ -19,6 +19,9 @@ func refreshActionDescription(view View) string {
 
 // Authored guidance lives alongside the registrations; it never dispatches an action.
 func actionGuidance(view View, id listAction) (string, string) {
+	if id == listActionCd {
+		return "Go to the folder", "Quit the dashboard and change the calling shell into the selected checkout, like `dev repo cd`, without opening a runtime. Needs the `dev shell-init` wrapper; without it dev prints the cd command. Enter asks where to open when several targets are installed; this key always cds."
+	}
 	if id == listActionGHDash {
 		return "Open the selected GitHub repository in gh-dash", "Hand the terminal to the installed gh dash extension with this repository and host as context. Native gh-dash filters, keybindings and configuration remain authoritative. Closing it restores this dashboard and refreshes local observations."
 	}

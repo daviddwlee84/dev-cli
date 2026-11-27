@@ -15,7 +15,7 @@ in CI to catch drift.
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
-- `--runtime` — override runtime backend: herdr, tmux, zellij or none
+- `--runtime` — override runtime backend: herdr, herdr-core, tmux, zellij or none
 - `--scaffolds` — path to scaffolds.toml (default: $XDG_CONFIG_HOME/dev/scaffolds.toml)
 
 ### `dev activity`

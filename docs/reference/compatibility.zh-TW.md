@@ -87,6 +87,7 @@ Done 後遞迴 handoff 需重新載入 shell integration。
 |---|---|---|
 | 核心 repository/task/worktree 操作 | Git | 無法使用；Git 是唯一 hard runtime dependency |
 | grouped runtime 與 agent activity | Herdr server + CLI | `auto` 改試 tmux、Zellij，最後 none |
+| Herdr Desktop space 與 hc agent activity | herdr-core（`hc`）server，Herdr Desktop 視窗為 optional | 在 hc terminal 內 `auto` 優先選 herdr-core；沒有視窗時改開一般 hc terminal；不支援 worktree grouping、exact-pane launch 與 `--run` |
 | named terminal session | tmux 或相容 Zellij | `none` 保留核心 behavior 與 shell navigation |
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |

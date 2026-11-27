@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `herdr-core` runtime backend for herdr-core (`hc`) and the official Herdr
+  Desktop window (`herdr-app`): sessions are desktop spaces (or bare hc
+  terminals without a window), agent occupancy comes from each local terminal's
+  foreground cwd, opening reuses a covering space or creates an unfocused one,
+  and close only ends surfaces dev labelled `dev.owned=1`. Inside an hc terminal
+  `runtime.backend = "auto"` now prefers it instead of attaching a nested Herdr
+  client. It offers no worktree grouping, exact-pane launch or `--run`.
+- `dev doctor` reports the caller's host (`runtime/host`), e.g.
+  `herdr-core (Herdr Desktop, t2)`, distinguishing classic Herdr, herdr-core
+  with Herdr Desktop, and an unconfirmed GUI such as Sheprd.
+- Dashboard Enter asks where to open a local checkout when two or more targets
+  are installed: configured runtime, Herdr Desktop space, Herdr workspace,
+  Sheprd (`sheprd open`), tmux/zellij from inside them, or `cd here`.
+  `[tui.open]` sets `mode = "ask" | "default"` and the preselected `default`.
+- Dashboard `C` goes to the selected task, repository, worktree, Try or cloned
+  REMOTE folder in the calling shell, like `dev repo cd`.
+
+### Changed
+
+- `C` is now a reserved dashboard key; move any `[[tui.tools]]` entry bound to
+  it.
+
 ## [0.3.6] - 2026-11-13
 
 ### Added

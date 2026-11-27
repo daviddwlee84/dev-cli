@@ -96,6 +96,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 |---|---|---|
 | core repository/task/worktree operations | Git | unavailable; Git is the only hard runtime dependency |
 | rich grouped runtime and agent activity | Herdr server + CLI | `auto` tries tmux, then Zellij, then none |
+| Herdr Desktop spaces and hc agent activity | herdr-core (`hc`) server, optional Herdr Desktop window | inside an hc terminal `auto` prefers herdr-core; without a window it opens plain hc terminals; no worktree grouping, exact-pane launch or `--run` |
 | named terminal session | tmux or compatible Zellij | `none` preserves core behavior and shell navigation |
 | GitHub pull requests/remotes | `gh` authenticated | branch still pushes when Git works; browser/manual flow may be needed |
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |

@@ -59,7 +59,11 @@ observations 尚在載入也能進入；選單開啟期間原選取列消失，�
 目的地、nested-repository 限制與 exclusive-create 條件。其他依賴所選列的操作
 及 REMOTE clone 的 freshness checks 維持不變；pending rows 不是 mutation 授權。
 
-離開篩選輸入後，REPOS Enter 只開啟所選 repository，不建立 task。`s`／`d` 開啟完整 start
+離開篩選輸入後，REPOS Enter 只開啟所選 repository，不建立 task。若安裝了兩個以上的
+open target（configured runtime、Herdr Desktop space、Herdr workspace、Sheprd、`cd here`，
+以及只在其內部才列出的 tmux／zellij），Enter 會先詢問要開在哪裡：`1-9` 選擇、Enter 用預設、
+Esc 取消；`[tui.open]` 可設定預設或略過詢問。在 task、repository、worktree、Try 或已 clone
+的 REMOTE 列按 `C`，一律離開 dashboard 並 cd 到該資料夾，等同 `dev repo cd`。`s`／`d` 開啟完整 start
 wizard，分別預選 worktree／direct。Wizard 詢問 task 與必要的 branch、base、
 next action，最終建立確認前可選 open（預設）或 stay。Reviewed plan 的 base
 必須明確，不能由任意 checked-out branch 推定。

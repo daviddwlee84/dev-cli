@@ -12,6 +12,8 @@ or when launching an agent into a worktree created by `dev work start --json`.
 
 - `dev` owns the durable task, branch and checkout.
 - Herdr owns workspace/pane layout and live process detection.
+- The `herdr-core` runtime (Herdr Desktop) has no exact root-pane launch;
+  parallel launch fails closed there.
 - Fleet navigation prepares workspaces without focus in an explicit remote
   session. Select the reported machine/workspace in Herdr's native sidebar;
   it never uses session-wide focus to navigate one client. Windows host connections

@@ -181,6 +181,10 @@ type Actions struct {
 	OpenCheckout func(ctx context.Context, r RepoRow, checkout inventory.RepoCheckout) (OpenResult, error)
 	// OpenRemote opens a remote's existing local checkout.
 	OpenRemote func(ctx context.Context, r RemoteRow) (OpenResult, error)
+	// OpenTargets lists the places Enter can open a checkout in. With two or
+	// more, Enter asks; nil or one keeps the configured runtime. The chosen
+	// ID reaches the Open* callbacks through OpenTargetFrom(ctx).
+	OpenTargets func() []OpenTarget
 	// OpenFleet returns an interactive process for a local or remote fleet row.
 	OpenFleet func(ctx context.Context, r FleetRow) (*exec.Cmd, error)
 	// CloneRemote clones a remote that has no local checkout and returns the
@@ -236,6 +240,9 @@ type OpenResult struct {
 	Status        string
 	Directory     string
 	RuntimeHandle string
+	// Runtime names the backend owning RuntimeHandle when it is not the
+	// configured one, so activation after exit uses the right adapter.
+	Runtime string
 }
 
 // ConfigUpdate is the subset of config a running TUI can safely apply without
@@ -314,6 +321,7 @@ const (
 	modeNoteConfirmDelete
 	modeSnippetProject
 	modeSnippetSearch
+	modeOpenTarget
 )
 
 type remoteClonePhase uint8
@@ -507,6 +515,12 @@ type Model struct {
 	quitting      bool
 	chosen        string
 	activate      string
+	// activateRuntime is the backend owning activate when it differs from
+	// the configured runtime.
+	activateRuntime string
+
+	openTargets   []OpenTarget
+	openSelection selectionToken
 }
 
 // New builds the dashboard.
@@ -601,6 +615,10 @@ func (m Model) Chosen() string { return m.chosen }
 // Activation reports the runtime handle to switch/attach after the dashboard
 // has restored the terminal, or "" when the user quit normally.
 func (m Model) Activation() string { return m.activate }
+
+// ActivationRuntime names the backend owning Activation, or "" for the
+// configured runtime.
+func (m Model) ActivationRuntime() string { return m.activateRuntime }
 
 // CurrentView reports which list is showing.
 func (m Model) CurrentView() View { return m.view }
@@ -784,11 +802,16 @@ type noteActionMsg struct {
 }
 
 type actionMsg struct {
-	status     string
-	cd         string
-	activate   string
-	forceSizes bool
-	err        error
+	status          string
+	cd              string
+	activate        string
+	activateRuntime string
+	forceSizes      bool
+	err             error
+}
+
+func openedMsg(opened OpenResult, err error) actionMsg {
+	return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, activateRuntime: opened.Runtime, err: err}
 }
 
 type triesMsg struct {
@@ -1017,11 +1040,15 @@ func (m Model) applyRepoPatch(row RepoRow, tags []string, note string) tea.Cmd {
 }
 
 func (m Model) applyTry(request TryRequest) tea.Cmd {
+	return m.applyTryIn(context.Background(), request)
+}
+
+func (m Model) applyTryIn(ctx context.Context, request TryRequest) tea.Cmd {
 	if m.actions.Tries.Apply == nil {
 		return nil
 	}
 	return func() tea.Msg {
-		result, err := m.actions.Tries.Apply(context.Background(), request)
+		result, err := m.actions.Tries.Apply(ctx, request)
 		return tryActionMsg{result: result, err: err}
 	}
 }
@@ -2231,7 +2258,7 @@ func (m *Model) finishRemoteCloneState() tea.Cmd {
 		return tea.Quit
 	}
 	if deferred.RuntimeHandle != "" {
-		m.activate, m.quitting = deferred.RuntimeHandle, true
+		m.activate, m.activateRuntime, m.quitting = deferred.RuntimeHandle, deferred.Runtime, true
 		return tea.Quit
 	}
 	return nil
@@ -3069,7 +3096,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.remoteClone.active() {
 			if msg.result.CD != "" || msg.result.RuntimeHandle != "" {
 				m.remoteClone.deferredOpen = OpenResult{
-					Status: msg.result.Status, Directory: msg.result.CD, RuntimeHandle: msg.result.RuntimeHandle,
+					Status: msg.result.Status, Directory: msg.result.CD, RuntimeHandle: msg.result.RuntimeHandle, Runtime: msg.result.Runtime,
 				}
 			}
 			msg.result.CD, msg.result.RuntimeHandle = "", ""
@@ -3088,7 +3115,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if msg.result.RuntimeHandle != "" {
-			m.activate, m.quitting = msg.result.RuntimeHandle, true
+			m.activate, m.activateRuntime, m.quitting = msg.result.RuntimeHandle, msg.result.Runtime, true
 			return m, tea.Quit
 		}
 		m.beginTryLoads(msg.result.RefreshRepos, loadAction)
@@ -3202,7 +3229,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the clone mutation is in flight. Preserve its completed handoff and
 			// apply it as soon as the clone reaches a terminal state.
 			m.remoteClone.deferredOpen = OpenResult{
-				Status: msg.status, Directory: msg.cd, RuntimeHandle: msg.activate,
+				Status: msg.status, Directory: msg.cd, RuntimeHandle: msg.activate, Runtime: msg.activateRuntime,
 			}
 			return m, nil
 		}
@@ -3220,7 +3247,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if msg.activate != "" {
-			m.activate, m.quitting = msg.activate, true
+			m.activate, m.activateRuntime, m.quitting = msg.activate, msg.activateRuntime, true
 			return m, tea.Quit
 		}
 		// Mutations that keep the dashboard open refresh local data only.
@@ -3267,6 +3294,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.mode == modeCopy {
 			return m.updateCopy(msg)
+		}
+		if m.mode == modeOpenTarget {
+			return m.updateOpenTarget(msg)
 		}
 		if m.mode == modeCloneURL {
 			return m.updateCloneURL(msg)
@@ -4299,21 +4329,27 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 	return nil
 }
 
-func (m Model) openSelected() tea.Cmd {
+// openSelected opens the selection in the configured runtime.
+func (m Model) openSelected() tea.Cmd { return m.openSelectedIn("") }
+
+// openSelectedIn opens the selection in one Open target; "" is the
+// configured runtime. Fleet rows keep their own host navigation.
+func (m Model) openSelectedIn(target string) tea.Cmd {
+	ctx := WithOpenTarget(context.Background(), target)
 	if row, ok := m.currentTask(); ok {
 		if err := taskOpenBlocker(row); err != nil {
 			return func() tea.Msg { return actionMsg{err: err} }
 		}
 		t := row.Task
 		return func() tea.Msg {
-			opened, err := m.actions.Open(context.Background(), t)
-			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
+			opened, err := m.actions.Open(ctx, t)
+			return openedMsg(opened, err)
 		}
 	}
 	if r, ok := m.currentRepo(); ok {
 		return func() tea.Msg {
-			opened, err := m.actions.OpenRepo(context.Background(), r)
-			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
+			opened, err := m.actions.OpenRepo(ctx, r)
+			return openedMsg(opened, err)
 		}
 	}
 	if item, ok := m.currentRepoItem(); ok && item.child() {
@@ -4326,8 +4362,8 @@ func (m Model) openSelected() tea.Cmd {
 			if m.actions.OpenCheckout == nil {
 				return actionMsg{err: fmt.Errorf("opening linked worktrees is unavailable")}
 			}
-			opened, err := m.actions.OpenCheckout(context.Background(), item.Repo, checkout)
-			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
+			opened, err := m.actions.OpenCheckout(ctx, item.Repo, checkout)
+			return openedMsg(opened, err)
 		}
 	}
 	if r, ok := m.currentTry(); ok {
@@ -4336,15 +4372,15 @@ func (m Model) openSelected() tea.Cmd {
 				return tryActionMsg{err: fmt.Errorf("Try %s is %s on this host", r.Item.DisplayName(), r.Where())}
 			}
 		}
-		return m.applyTry(TryRequest{Action: TryOpen, ID: r.reference()})
+		return m.applyTryIn(ctx, TryRequest{Action: TryOpen, ID: r.reference()})
 	}
 	if r, ok := m.currentRemote(); ok {
 		if !r.Cloned() {
 			return nil // c is the explicit clone action
 		}
 		return func() tea.Msg {
-			opened, err := m.actions.OpenRemote(context.Background(), r)
-			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
+			opened, err := m.actions.OpenRemote(ctx, r)
+			return openedMsg(opened, err)
 		}
 	}
 	if row, ok := m.currentFleet(); ok && row.Repository != nil && m.actions.OpenFleet != nil {

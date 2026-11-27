@@ -102,7 +102,15 @@ func runDoctor(app *App) error {
 	checks = append(checks, sshDoctorChecks(app)...)
 	checks = append(checks, hygieneDoctorChecks(app)...)
 
-	// Runtime backends.
+	// Runtime backends. The host line is the caller's own terminal context,
+	// which can differ from the selected backend (e.g. an hc terminal shown by
+	// Herdr Desktop with runtime.backend = "herdr").
+	host := runtime.DetectHost(ctx)
+	hostDetail := host.Describe()
+	if len(host.Evidence) > 0 {
+		hostDetail += "  [" + strings.Join(host.Evidence, ", ") + "]"
+	}
+	checks = append(checks, check{"runtime/host", checkOK, hostDetail})
 	active := app.Runtime().Name()
 	for _, rt := range runtime.All() {
 		name := rt.Name()

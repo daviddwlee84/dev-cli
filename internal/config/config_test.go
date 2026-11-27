@@ -291,7 +291,7 @@ func TestAzureDevOpsTargetsRejectInvalidAndDuplicateValues(t *testing.T) {
 }
 
 func TestValidateRejectsBadBackendAndTemplate(t *testing.T) {
-	for _, backend := range []string{"auto", "herdr", "tmux", "zellij", "none"} {
+	for _, backend := range []string{"auto", "herdr", "herdr-core", "tmux", "zellij", "none"} {
 		c := Default()
 		c.Runtime.Backend = backend
 		if err := c.Validate(); err != nil {

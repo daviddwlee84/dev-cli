@@ -253,3 +253,50 @@ agents; mixed backend coverage requires individual handling. Disabled or failed
 runtime inspection stays unknown. Batch cancellation stops scheduling after the
 current operation returns so its result ledger can be retained. See
 [local triage](local-triage.md).
+
+## herdr-core, Herdr Desktop and Sheprd
+
+Three different products share the Herdr name; dev treats them separately:
+
+| Product | Caller marker | dev surface |
+|---|---|---|
+| classic `herdr` multiplexer | `HERDR_ENV=1` | `herdr` runtime (everything above) |
+| herdr-core (`hc`) with the official Herdr Desktop window (`herdr-app`) | `HC_TERMINAL_ID`, `HC_TERMINAL_SOCKET` | `herdr-core` runtime |
+| Sheprd (third-party GUI, not Herdr Desktop) | its own control socket | Enter target `sheprd` (`sheprd open DIR`) only |
+
+`dev doctor` reports the caller's host as `runtime/host`, for example
+`herdr-core (Herdr Desktop, t2)`. The GUI is claimed only when `herdr-app ls`
+shows the caller's terminal; otherwise it stays `GUI unknown`. Markers are read
+innermost first, so tmux started inside an hc terminal is a tmux host.
+
+`runtime.backend = "auto"` prefers `herdr-core` inside an hc terminal with no
+inner `HERDR_ENV`, `TMUX` or `ZELLIJ`; elsewhere the order is unchanged. Without
+that rule a classic Herdr workspace would open and then attach a nested Herdr
+client inside the desktop pane.
+
+| dev operation | herdr-core / Herdr Desktop command |
+|---|---|
+| list live sessions | `hc ls --json`, `hc get <t> --json` per local terminal, `herdr-app ls` |
+| list agent activity | the same terminal reads; any recognized app occupies its foreground cwd |
+| open a checkout | reuse a covering space, else `herdr-app do space.new --folder <dir> --focus false --name <label>`; without a window `hc run --bg --no-parent --outlive-parent --cwd <dir>` |
+| activate | `herdr-app do space.select --id <space>`; a bare terminal is attached with `hc attach` only from outside herdr-core |
+| close | only surfaces whose every terminal carries `dev.owned=1`; `space.close --confirmed` or `hc kill` |
+| show task state | `hc label <t> dev.<key>=<value>` |
+
+Remote machine terminals (`machine/t7`) never cover or occupy a local checkout.
+`hc ls` reports only the shell cwd, so each local terminal is read with `hc get`
+for its foreground cwd; an unreadable terminal fails agent observation closed.
+The `herdr-core` runtime does not implement worktree grouping, exact root-pane
+launch, pane command dispatch or pane close, so `dev work start --run` and
+parallel launch fail closed there.
+
+## Dashboard Enter targets
+
+With two or more installed targets, dashboard Enter asks where to open the
+selected task, repository, worktree, Try or cloned REMOTE row: the configured
+runtime, Herdr Desktop space (or herdr-core terminal), Herdr workspace, tmux or
+zellij (only from inside them), Sheprd, or `cd here`. `1-9` choose, Enter takes
+the default, Esc cancels. `[tui.open] mode = "default"` skips the question and
+`default` names the preselected target. `C` always quits into the shell
+directory, like `dev repo cd`. A non-default backend's handle is activated with
+that backend after the dashboard exits. FLEET Enter keeps its own navigation.

@@ -271,7 +271,9 @@ type TryActionResult struct {
 	Status        string
 	CD            string
 	RuntimeHandle string
-	RefreshRepos  bool
+	// Runtime names the backend owning RuntimeHandle; see OpenResult.Runtime.
+	Runtime      string
+	RefreshRepos bool
 }
 
 // TryActions groups Try-specific callbacks instead of continuously widening the

@@ -153,6 +153,7 @@ const (
 	listActionPRSyncBase
 	listActionPRBrowser
 	listActionGHDash
+	listActionCd
 )
 
 type selectionToken struct {
@@ -624,7 +625,9 @@ func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 				return m.navigateFleetSelected()
 			}
 		}
-		return m, m.openSelected()
+		return m.beginOpen()
+	case listActionCd:
+		return m, m.openSelectedIn(OpenTargetCD)
 	case listActionAddNote:
 		if target, ok := m.selectedNoteTarget(); ok {
 			return m.openNoteAdd(target, false)
